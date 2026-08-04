@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Dispatch AI</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="logo" href="/">Dispatch<span>AI</span></a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/onboard">New client</a>
+    </nav>
+  </header>
+
+  <section style="padding: 40px 0;">
+    <h1 style="font-size:28px;">Clients</h1>
+    <p style="color:#4b5563;">Every business that's filled out the intake form, with their AI agent's draft script.</p>
+    <div class="client-list" id="clientList"></div>
+  </section>
+
+  <footer>Dispatch AI — MVP prototype.</footer>
+</div>
+
+<script>
+async function loadClients() {
+  const res = await fetch('/api/clients');
+  const clients = await res.json();
+  const list = document.getElementById('clientList');
+  list.innerHTML = '';
+
+  if (clients.length === 0) {
+    list.innerHTML = '<p style="color:#9ca3af;">No clients yet. <a href="/onboard">Add one</a>.</p>';
+    return;
+  }
+
+  clients.slice().reverse().forEach((client) => {
+    const card = document.createElement('div');
+    card.className = 'client-card';
+
+    const statusClass = client.status === 'approved' ? 'status-approved'
+      : client.status === 'generating' ? 'status-generating'
+      : 'status-draft';
+
+    card.innerHTML = `
+      <div class="top-row">
+        <strong>${client.intake?.companyName || '(unnamed)'}</strong>
+        <span class="status-pill ${statusClass}">${client.status}</span>
+      </div>
+      <div style="font-size:13px; color:#6b7280; margin-top:4px;">
+        ${client.intake?.trades || ''} · ${client.intake?.serviceArea || ''}
+      </div>
+      <textarea class="script-box" data-id="${client.id}">${client.script || ''}</textarea>
+      <div style="margin-top:10px; display:flex; gap:10px;">
+        <button class="btn btn-secondary save-btn" data-id="${client.id}">Save edits</button>
+        <button class="btn btn-primary approve-btn" data-id="${client.id}" ${client.status === 'approved' ? 'disabled' : ''}>
+          ${client.status === 'approved' ? 'Approved ✓' : 'Approve script'}
+        </button>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+
+  document.querySelectorAll('.save-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const textarea = document.querySelector(`.script-box[data-id="${id}"]`);
+      btn.textContent = 'Saving...';
+      await fetch(`/api/clients/${id}/script`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ script: textarea.value })
+      });
+      btn.textContent = 'Save edits';
+    });
+  });
+
+  document.querySelectorAll('.approve-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      await fetch(`/api/clients/${id}/approve`, { method: 'POST' });
+      loadClients();
+    });
+  });
+}
+
+loadClients();
+</script>
+</body>
+</html>
