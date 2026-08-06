@@ -14,6 +14,7 @@ const crypto = require('crypto');
 const db = require('./lib/db');
 const { callClaude } = require('./lib/claude');
 const { buildScriptGenerationPrompt, DEMO_SYSTEM_PROMPT } = require('./lib/scriptPrompt');
+const { createCheckoutSession, verifyStripeSignature } = require('./lib/stripeClient');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -56,6 +57,81 @@ function readBody(req) {
   });
 }
 
+// Reads the raw, unparsed request body as a Buffer. Needed for the Stripe
+// webhook route specifically -- signature verification requires the exact
+// raw bytes Stripe sent, before any JSON parsing happens.
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > 2_000_000) {
+        reject(new Error('Request body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+// --- Dashboard authentication (HTTP Basic Auth) ---------------------------
+// Protects the dashboard page and every /api/clients* endpoint (viewing,
+// editing, approving, and generating payment links -- all admin actions).
+// /api/chat, /api/onboard, and /api/stripe/webhook stay public since
+// prospects, new clients, and Stripe's own servers need to reach them
+// without a login.
+//
+// If DASHBOARD_PASSWORD isn't set, a clearly-insecure default is used so
+// the dashboard is still protected out of the box rather than wide open --
+// but the console logs a loud warning until a real password is set in
+// Render's environment variables.
+function isProtectedPath(pathname) {
+  return pathname === '/dashboard' || pathname.startsWith('/api/clients');
+}
+
+function checkDashboardAuth(req) {
+  const expectedUser = process.env.DASHBOARD_USERNAME || 'admin';
+  const expectedPass = process.env.DASHBOARD_PASSWORD || 'changeme-now';
+
+  const header = req.headers['authorization'];
+  if (!header || !header.startsWith('Basic ')) return false;
+
+  let decoded;
+  try {
+    decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
+  } catch (err) {
+    return false;
+  }
+  const sepIdx = decoded.indexOf(':');
+  if (sepIdx === -1) return false;
+  const user = decoded.slice(0, sepIdx);
+  const pass = decoded.slice(sepIdx + 1);
+
+  const userBuf = Buffer.from(user);
+  const expectedUserBuf = Buffer.from(expectedUser);
+  const passBuf = Buffer.from(pass);
+  const expectedPassBuf = Buffer.from(expectedPass);
+
+  const userMatches =
+    userBuf.length === expectedUserBuf.length && crypto.timingSafeEqual(userBuf, expectedUserBuf);
+  const passMatches =
+    passBuf.length === expectedPassBuf.length && crypto.timingSafeEqual(passBuf, expectedPassBuf);
+
+  return userMatches && passMatches;
+}
+
+function sendAuthChallenge(res) {
+  res.writeHead(401, {
+    'content-type': 'text/plain',
+    'www-authenticate': 'Basic realm="Dispatch AI Dashboard"',
+  });
+  res.end('Authentication required.');
+}
+
 function serveStaticFile(req, res, urlPath) {
   // Map "/" -> index.html, "/onboard" -> onboard.html, "/dashboard" -> dashboard.html
   const routeMap = {
@@ -88,7 +164,54 @@ const server = http.createServer(async (req, res) => {
   const pathname = url.pathname;
 
   try {
-    // --- API routes ---------------------------------------------------
+    // --- Dashboard auth gate --------------------------------------------
+    if (isProtectedPath(pathname) && !checkDashboardAuth(req)) {
+      return sendAuthChallenge(res);
+    }
+
+    // --- Stripe webhook (must read the RAW body, before any JSON parsing) --
+    if (pathname === '/api/stripe/webhook' && req.method === 'POST') {
+      const rawBody = await readRawBody(req);
+      const signatureHeader = req.headers['stripe-signature'];
+      const verification = verifyStripeSignature(
+        rawBody.toString('utf8'),
+        signatureHeader,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+
+      if (!verification.valid) {
+        console.error('Stripe webhook rejected:', verification.reason);
+        return sendJson(res, 400, { error: `Invalid webhook: ${verification.reason}` });
+      }
+
+      let event;
+      try {
+        event = JSON.parse(rawBody.toString('utf8'));
+      } catch (err) {
+        return sendJson(res, 400, { error: 'Invalid JSON payload' });
+      }
+
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        const clientId = session.client_reference_id;
+        if (clientId && db.getClient(clientId)) {
+          const clientRecord = db.getClient(clientId);
+          db.updateClient(clientId, {
+            status: 'paid',
+            plan: clientRecord.pendingPlan || null,
+            paidAt: new Date().toISOString(),
+            stripeSubscriptionId: session.subscription || null,
+          });
+          console.log(`Client ${clientId} marked as paid via Stripe webhook.`);
+        } else {
+          console.warn('Stripe webhook: checkout.session.completed with unknown client_reference_id', clientId);
+        }
+      }
+
+      return sendJson(res, 200, { received: true });
+    }
+
+    // --- Landing page demo chat widget -----------------------------------
     if (pathname === '/api/chat' && req.method === 'POST') {
       const { messages } = await readBody(req);
       if (!Array.isArray(messages) || messages.length === 0) {
@@ -98,6 +221,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, result);
     }
 
+    // --- Client onboarding / intake form -----------------------------------
     if (pathname === '/api/onboard' && req.method === 'POST') {
       const intake = await readBody(req);
       if (!intake.companyName) {
@@ -127,6 +251,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, updated);
     }
 
+    // --- Dashboard data ------------------------------------------------------
     if (pathname === '/api/clients' && req.method === 'GET') {
       return sendJson(res, 200, db.listClients());
     }
@@ -147,6 +272,35 @@ const server = http.createServer(async (req, res) => {
       });
       if (!updated) return sendJson(res, 404, { error: 'not found' });
       return sendJson(res, 200, updated);
+    }
+
+    // Generates a real Stripe subscription payment link for an approved
+    // client. Returns a demo-mode message instead of a real link until
+    // STRIPE_SECRET_KEY and the price IDs are configured in Render.
+    const clientCheckoutMatch = pathname.match(/^\/api\/clients\/([^/]+)\/checkout$/);
+    if (clientCheckoutMatch && req.method === 'POST') {
+      const { plan } = await readBody(req);
+      const clientRecord = db.getClient(clientCheckoutMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+
+      const priceId =
+        plan === 'growth' ? process.env.STRIPE_PRICE_ID_GROWTH : process.env.STRIPE_PRICE_ID_STARTER;
+      const baseUrl = `${url.protocol}//${url.host}`;
+
+      const result = await createCheckoutSession({
+        clientId: clientRecord.id,
+        priceId,
+        companyName: clientRecord.intake?.companyName,
+        successUrl: `${baseUrl}/dashboard?paid=1`,
+        cancelUrl: `${baseUrl}/dashboard?cancelled=1`,
+      });
+
+      const normalizedPlan = plan === 'growth' ? 'growth' : 'starter';
+      if (!result.demoMode) {
+        db.updateClient(clientRecord.id, { pendingPlan: normalizedPlan });
+      }
+
+      return sendJson(res, 200, { ...result, plan: normalizedPlan });
     }
 
     const clientGetMatch = pathname.match(/^\/api\/clients\/([^/]+)$/);
@@ -172,5 +326,11 @@ server.listen(PORT, () => {
   console.log(`Dispatch AI MVP running at http://localhost:${PORT}`);
   if (!process.env.ANTHROPIC_API_KEY) {
     console.log('NOTE: ANTHROPIC_API_KEY is not set -- running in demo/placeholder mode. See .env.example.');
+  }
+  if (!process.env.DASHBOARD_PASSWORD) {
+    console.log('WARNING: DASHBOARD_PASSWORD is not set -- using an insecure default password. Set a real one in Render before sharing this URL.');
+  }
+  if (!process.env.STRIPE_SECRET_KEY) {
+    console.log('NOTE: STRIPE_SECRET_KEY is not set -- payment links will return a demo-mode message instead of real Stripe checkout links.');
   }
 });
