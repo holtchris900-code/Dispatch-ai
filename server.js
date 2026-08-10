@@ -208,6 +208,24 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      // Fires the moment Stripe actually ends a subscription -- whether
+      // that's an immediate cancellation or the end of a paid period,
+      // depending on how cancellation was triggered. This is the signal
+      // that a client should lose access.
+      if (event.type === 'customer.subscription.deleted') {
+        const subscription = event.data.object;
+        const clientRecord = db.getClientBySubscriptionId(subscription.id);
+        if (clientRecord) {
+          db.updateClient(clientRecord.id, {
+            status: 'cancelled',
+            cancelledAt: new Date().toISOString(),
+          });
+          console.log(`Client ${clientRecord.id} marked as cancelled via Stripe webhook.`);
+        } else {
+          console.warn('Stripe webhook: customer.subscription.deleted for unknown subscription', subscription.id);
+        }
+      }
+
       return sendJson(res, 200, { received: true });
     }
 
