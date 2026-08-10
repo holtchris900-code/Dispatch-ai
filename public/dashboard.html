@@ -42,11 +42,23 @@ async function loadClients() {
     card.className = 'client-card';
 
     const statusClass = client.status === 'paid' ? 'status-paid'
+      : client.status === 'cancelled' ? 'status-cancelled'
       : client.status === 'approved' ? 'status-approved'
       : client.status === 'generating' ? 'status-generating'
       : 'status-draft';
 
-    const isApprovedOrPaid = client.status === 'approved' || client.status === 'paid';
+    // The script itself was already reviewed once the client has ever
+    // reached approved/paid/cancelled -- cancellation is a billing state,
+    // not a reason to re-review the script.
+    const scriptWasApproved = ['approved', 'paid', 'cancelled'].includes(client.status);
+
+    const paymentLinkButtons = `
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-secondary checkout-btn" data-id="${client.id}" data-plan="starter">Get Starter link</button>
+        <button class="btn btn-secondary checkout-btn" data-id="${client.id}" data-plan="growth">Get Growth link</button>
+      </div>
+      <div class="checkout-result" data-id="${client.id}" style="margin-top:10px; display:none;"></div>
+    `;
 
     let billingHtml = '';
     if (client.status === 'paid') {
@@ -56,15 +68,19 @@ async function loadClients() {
           💳 Paid — ${planLabel}
         </div>
       `;
+    } else if (client.status === 'cancelled') {
+      billingHtml = `
+        <div class="billing-box billing-cancelled">
+          <div style="font-weight:600; margin-bottom:8px;">⚠️ Subscription cancelled${client.cancelledAt ? ' — ' + new Date(client.cancelledAt).toLocaleDateString() : ''}</div>
+          <div style="font-size:12.5px; margin-bottom:10px;">This client's AI agent should be considered off until they resubscribe. If they're connected to a real phone number, pause or remove that agent in Retell too.</div>
+          ${paymentLinkButtons}
+        </div>
+      `;
     } else if (client.status === 'approved') {
       billingHtml = `
         <div class="billing-box">
           <div style="font-size:13px; font-weight:600; margin-bottom:8px;">Send a payment link to go live</div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button class="btn btn-secondary checkout-btn" data-id="${client.id}" data-plan="starter">Get Starter link</button>
-            <button class="btn btn-secondary checkout-btn" data-id="${client.id}" data-plan="growth">Get Growth link</button>
-          </div>
-          <div class="checkout-result" data-id="${client.id}" style="margin-top:10px; display:none;"></div>
+          ${paymentLinkButtons}
         </div>
       `;
     }
@@ -80,8 +96,8 @@ async function loadClients() {
       <textarea class="script-box" data-id="${client.id}">${client.script || ''}</textarea>
       <div style="margin-top:10px; display:flex; gap:10px;">
         <button class="btn btn-secondary save-btn" data-id="${client.id}">Save edits</button>
-        <button class="btn btn-primary approve-btn" data-id="${client.id}" ${isApprovedOrPaid ? 'disabled' : ''}>
-          ${isApprovedOrPaid ? 'Approved ✓' : 'Approve script'}
+        <button class="btn btn-primary approve-btn" data-id="${client.id}" ${scriptWasApproved ? 'disabled' : ''}>
+          ${scriptWasApproved ? 'Approved ✓' : 'Approve script'}
         </button>
       </div>
       ${billingHtml}
