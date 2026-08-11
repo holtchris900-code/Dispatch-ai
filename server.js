@@ -14,7 +14,7 @@ const crypto = require('crypto');
 const db = require('./lib/db');
 const { callClaude } = require('./lib/claude');
 const { buildScriptGenerationPrompt, DEMO_SYSTEM_PROMPT } = require('./lib/scriptPrompt');
-const { createCheckoutSession, verifyStripeSignature } = require('./lib/stripeClient');
+const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession } = require('./lib/stripeClient');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -138,6 +138,7 @@ function serveStaticFile(req, res, urlPath) {
     '/': 'index.html',
     '/onboard': 'onboard.html',
     '/dashboard': 'dashboard.html',
+    '/success': 'success.html',
   };
   const relativePath = routeMap[urlPath] || urlPath.replace(/^\//, '');
   const filePath = path.join(PUBLIC_DIR, relativePath);
@@ -201,6 +202,7 @@ const server = http.createServer(async (req, res) => {
             plan: clientRecord.pendingPlan || null,
             paidAt: new Date().toISOString(),
             stripeSubscriptionId: session.subscription || null,
+            stripeCustomerId: session.customer || null,
           });
           console.log(`Client ${clientId} marked as paid via Stripe webhook.`);
         } else {
@@ -309,8 +311,12 @@ const server = http.createServer(async (req, res) => {
         clientId: clientRecord.id,
         priceId,
         companyName: clientRecord.intake?.companyName,
-        successUrl: `${baseUrl}/dashboard?paid=1`,
-        cancelUrl: `${baseUrl}/dashboard?cancelled=1`,
+        // These used to point at /dashboard, which is password-protected --
+        // a real paying client has no way past that login. They go to the
+        // public /success page instead, which is where the self-service
+        // "manage my subscription" button lives.
+        successUrl: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${baseUrl}/?checkout=cancelled`,
       });
 
       const normalizedPlan = plan === 'growth' ? 'growth' : 'starter';
@@ -321,11 +327,57 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ...result, plan: normalizedPlan });
     }
 
+    // Lets the founder (from the dashboard, already logged in) generate a
+    // manage/cancel link for a specific paying client on demand -- useful
+    // when a client emails asking to cancel instead of using the portal
+    // link from their original success page.
+    const clientPortalMatch = pathname.match(/^\/api\/clients\/([^/]+)\/portal$/);
+    if (clientPortalMatch && req.method === 'POST') {
+      const clientRecord = db.getClient(clientPortalMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+
+      const baseUrl = `${url.protocol}//${url.host}`;
+      const result = await createPortalSession({
+        customerId: clientRecord.stripeCustomerId,
+        returnUrl: `${baseUrl}/dashboard`,
+      });
+      return sendJson(res, 200, result);
+    }
+
     const clientGetMatch = pathname.match(/^\/api\/clients\/([^/]+)$/);
     if (clientGetMatch && req.method === 'GET') {
       const clientRecord = db.getClient(clientGetMatch[1]);
       if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
       return sendJson(res, 200, clientRecord);
+    }
+
+    // Public counterpart used by the /success page right after a real
+    // customer pays. The Checkout session_id in the URL is a long,
+    // unguessable token Stripe generates -- only the paying customer's own
+    // browser (and their emailed receipt) ever sees it, so looking up their
+    // Stripe customer from it is a reasonable, lightweight way to offer
+    // self-service without building a full client login system.
+    if (pathname === '/api/portal-session' && req.method === 'POST') {
+      const { sessionId } = await readBody(req);
+      if (!sessionId) return sendJson(res, 400, { error: 'sessionId is required' });
+
+      const baseUrl = `${url.protocol}//${url.host}`;
+      const { demoMode, session } = await getCheckoutSession(sessionId);
+      if (demoMode) {
+        return sendJson(res, 200, {
+          demoMode: true,
+          message: 'STRIPE_SECRET_KEY is not set yet -- the self-service portal needs it configured first.',
+        });
+      }
+      if (!session || !session.customer) {
+        return sendJson(res, 404, { error: 'checkout session not found' });
+      }
+
+      const result = await createPortalSession({
+        customerId: session.customer,
+        returnUrl: `${baseUrl}/success?session_id=${sessionId}`,
+      });
+      return sendJson(res, 200, result);
     }
 
     // --- Static files ---------------------------------------------------
@@ -352,3 +404,4 @@ server.listen(PORT, () => {
     console.log('NOTE: STRIPE_SECRET_KEY is not set -- payment links will return a demo-mode message instead of real Stripe checkout links.');
   }
 });
+
