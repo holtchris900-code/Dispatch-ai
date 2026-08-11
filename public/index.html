@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dispatch AI — Never Miss Another Service Call</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -12,17 +15,28 @@
     <a class="logo" href="/">Dispatch<span>AI</span></a>
     <nav>
       <a href="#demo">Try the demo</a>
-      <a href="/onboard">Get started</a>
+      <a href="#pricing">Pricing</a>
       <a href="/dashboard">Dashboard</a>
+      <a class="nav-cta" href="/onboard">Get started</a>
     </nav>
   </header>
 
   <section class="hero">
     <div>
-      <h1>Every missed call is a customer calling your competitor instead.</h1>
-      <p class="sub">Dispatch AI answers every call and chat, books the job, and flags emergencies — 24/7, even when your office is closed. This demo below is a real, working AI agent.</p>
-      <a class="btn btn-primary" href="/onboard">Set up my company's AI agent</a>
-      <div class="fine-print">Try chatting with the demo AI on the right first — it's the same technology your customers would talk to.</div>
+      <div class="eyebrow">● Built for HVAC, plumbing &amp; electrical</div>
+      <h1>Every missed call is a <span class="accent">customer calling your competitor</span> instead.</h1>
+      <p class="sub">Dispatch AI answers every call and chat, books the job, and flags emergencies — 24/7, even when your office is closed. The demo on the right is a real, working AI agent.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/onboard">Set up my company's AI agent</a>
+        <a class="btn btn-secondary" href="#pricing">See pricing</a>
+      </div>
+      <div class="fine-print">Try chatting with the demo AI first — it's the same technology your customers would talk to.</div>
+
+      <div class="stat-strip">
+        <div class="stat"><b>24/7</b><span>Always answering</span></div>
+        <div class="stat"><b>&lt;2 sec</b><span>Typical response time</span></div>
+        <div class="stat"><b>1 afternoon</b><span>To set up your agent</span></div>
+      </div>
     </div>
 
     <div class="chat-card" id="demo">
@@ -40,15 +54,108 @@
     </div>
   </section>
 
+  <section class="section-tight">
+    <h2>Live in three steps</h2>
+    <p class="lead">No developers, no long onboarding calls — just answer some questions about how your business runs.</p>
+    <div class="steps">
+      <div class="step-card">
+        <div class="step-num">1</div>
+        <h3>Tell us about your business</h3>
+        <p>A short form covers your services, pricing, hours, and how you want emergencies handled.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">2</div>
+        <h3>Review your AI's script</h3>
+        <p>We draft a script from your answers. You read it, edit anything, and approve it before it ever talks to a customer.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">3</div>
+        <h3>Go live</h3>
+        <p>Connect your phone line and website chat, and your AI agent starts answering — day or night.</p>
+      </div>
+    </div>
+  </section>
+
   <section class="section">
     <h2>Built for the way home service calls actually go</h2>
     <p class="lead">Answers every call, books directly into your calendar, flags true emergencies, and lets you review the script before it ever talks to a real customer.</p>
-    <p style="text-align:center;">
-      <a class="btn btn-secondary" href="/onboard">Set up your own AI agent →</a>
-    </p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h3>Answers every call</h3>
+        <p>No more missed calls going to voicemail — or straight to your competitor.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Books the job</h3>
+        <p>Collects the details you need and schedules directly into your calendar.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Flags emergencies</h3>
+        <p>You define what counts as urgent — no heat, a gas smell, an active leak — and it's handled differently.</p>
+      </div>
+      <div class="feature-card">
+        <h3>You stay in control</h3>
+        <p>Every script is written for your business and reviewed by you before it goes live.</p>
+      </div>
+    </div>
   </section>
 
-  <footer>Dispatch AI — MVP prototype. Phone numbers, pricing, and company names are placeholders.</footer>
+  <section class="section" id="pricing">
+    <h2>Simple, transparent pricing</h2>
+    <p class="lead">No enterprise sales calls, no seat minimums — just a flat monthly price built for one-location home service businesses. Billed monthly in GBP, cancel anytime.</p>
+    <div class="pricing-grid">
+      <div class="price-card">
+        <h3>Starter</h3>
+        <p class="price-desc">For a single line that just needs to stop missing calls.</p>
+        <div class="price-amount"><span class="amount">£119</span><span class="period">/ month</span></div>
+        <ul class="price-features">
+          <li><span class="check">✓</span> 250 call &amp; chat minutes / month</li>
+          <li><span class="check">✓</span> One phone line + website chat</li>
+          <li><span class="check">✓</span> Standard booking &amp; FAQ script</li>
+          <li><span class="check">✓</span> Email support</li>
+        </ul>
+        <a class="btn btn-secondary btn-block" href="/onboard">Get started</a>
+      </div>
+
+      <div class="price-card featured">
+        <div class="price-badge">Most popular</div>
+        <h3>Growth</h3>
+        <p class="price-desc">The right fit for most single-location HVAC, plumbing &amp; electrical shops.</p>
+        <div class="price-amount"><span class="amount">£229</span><span class="period">/ month</span></div>
+        <ul class="price-features">
+          <li><span class="check">✓</span> 750 call &amp; chat minutes / month</li>
+          <li><span class="check">✓</span> Everything in Starter</li>
+          <li><span class="check">✓</span> Emergency call routing &amp; priority flagging</li>
+          <li><span class="check">✓</span> Scheduling software integration</li>
+          <li><span class="check">✓</span> Priority support</li>
+        </ul>
+        <a class="btn btn-primary btn-block" href="/onboard">Get started</a>
+      </div>
+
+      <div class="price-card">
+        <h3>Multi-Location</h3>
+        <p class="price-desc">For businesses running more than one location or phone line.</p>
+        <div class="price-amount"><span class="amount">Custom</span></div>
+        <ul class="price-features">
+          <li><span class="check">✓</span> Everything in Growth</li>
+          <li><span class="check">✓</span> Multiple locations / phone lines</li>
+          <li><span class="check">✓</span> Volume-based minute allowance</li>
+          <li><span class="check">✓</span> Dedicated onboarding</li>
+        </ul>
+        <a class="btn btn-secondary btn-block" href="/onboard">Get in touch</a>
+      </div>
+    </div>
+    <p class="pricing-footnote">Overage minutes beyond your plan's allowance are billed at £0.30–£0.35/minute. No long-term contracts — cancel your subscription any time and billing stops immediately.</p>
+  </section>
+
+  <section class="section">
+    <div class="cta-banner">
+      <h2>Stop losing jobs to a missed call.</h2>
+      <p>Set up your AI agent this afternoon and see exactly what it will say to your customers before it ever answers a real call.</p>
+      <a class="btn btn-primary" href="/onboard">Set up my company's AI agent</a>
+    </div>
+  </section>
+
+  <footer>Dispatch AI — AI phone &amp; chat agents for home service businesses.</footer>
 </div>
 
 <script>
@@ -104,3 +211,4 @@ chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessag
 </script>
 </body>
 </html>
+
