@@ -36,6 +36,8 @@ Last, go to **Developers → Webhooks**, click "Add endpoint," and enter `https:
 
 Once all four of those environment variables are set in Render and the service redeploys, the dashboard's payment link buttons go from showing a demo-mode message to generating real, working Stripe checkout links you can text or email to an approved client.
 
+One more setting makes cancellation self-service for your clients, instead of them having to email you and you cancelling it for them manually: in Stripe, go to **Settings → Billing → Customer portal** and turn it on. Stripe will ask what you want to allow customers to do in that portal — make sure **"Cancel subscriptions"** is switched on (updating the payment method is on by default and worth leaving on too). Save it. That's it — no code, just a one-time toggle. After a client pays, they land on a page with a "Manage my subscription" button that opens this portal; you can also generate the same link for any paid client any time from your dashboard, under a "Get manage-subscription link" button on their card.
+
 ## Step 7 — Set your dashboard password
 
 The dashboard is now protected by a login, but it ships with an insecure placeholder password so it doesn't accidentally lock you out before you've configured a real one. In Render's environment variables, add `DASHBOARD_USERNAME` (anything you like, e.g. your name) and `DASHBOARD_PASSWORD` (something real and private — not something you use anywhere else). Once set, visiting `/dashboard` will prompt for that login before showing any client data.
@@ -45,3 +47,4 @@ The dashboard is now protected by a login, but it ships with an insecure placeho
 A couple of things still worth double-checking: make sure you've actually completed Step 7 above (the dashboard ships with a fallback password specifically so it isn't wide open, but that fallback is not something to leave in place). Review the AI-disclosure and outbound-calling compliance notes from the earlier planning document with a real look at your state's specific rules before making any outbound calls. And plan to move off the JSON-file storage to a real database once you have more than a handful of clients, since it's fine for testing but not built for scale or simultaneous edits.
 
 None of this needs to happen before your first test client — it needs to happen before you're handling real customer phone numbers, addresses, and payment information at any real volume.
+
