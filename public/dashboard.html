@@ -68,7 +68,11 @@ async function loadClients() {
       const planLabel = client.plan === 'growth' ? 'Growth' : client.plan === 'starter' ? 'Starter' : 'plan unknown';
       billingHtml = `
         <div class="billing-box billing-paid">
-          💳 Paid — ${planLabel}
+          <div>💳 Paid — ${planLabel}</div>
+          <div style="margin-top:12px;">
+            <button class="btn btn-secondary portal-btn" data-id="${client.id}">Get manage-subscription link</button>
+          </div>
+          <div class="portal-result" data-id="${client.id}" style="margin-top:10px; display:none;"></div>
         </div>
       `;
     } else if (client.status === 'cancelled') {
@@ -151,6 +155,33 @@ async function loadClients() {
         } else if (data.url) {
           resultBox.innerHTML = `
             <div style="font-size:12.5px; margin-bottom:4px;">Send this link to the client to complete payment:</div>
+            <input type="text" readonly value="${data.url}" style="width:100%; padding:8px; border-radius:6px; border:1px solid #e5e7eb; font-size:12.5px;" onclick="this.select()" />
+          `;
+        } else {
+          resultBox.innerHTML = `<span style="color:#b91c1c;">Something went wrong generating the link.</span>`;
+        }
+      } catch (err) {
+        resultBox.innerHTML = `<span style="color:#b91c1c;">Something went wrong generating the link.</span>`;
+      }
+    });
+  });
+
+  document.querySelectorAll('.portal-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const resultBox = document.querySelector(`.portal-result[data-id="${id}"]`);
+      resultBox.style.display = 'block';
+      resultBox.textContent = 'Generating link...';
+
+      try {
+        const res = await fetch(`/api/clients/${id}/portal`, { method: 'POST' });
+        const data = await res.json();
+
+        if (data.demoMode) {
+          resultBox.innerHTML = `<span style="color:#9a3412;">${data.message}</span>`;
+        } else if (data.url) {
+          resultBox.innerHTML = `
+            <div style="font-size:12.5px; margin-bottom:4px;">Send this link to the client so they can manage or cancel their subscription (this link expires after a while, so send it promptly):</div>
             <input type="text" readonly value="${data.url}" style="width:100%; padding:8px; border-radius:6px; border:1px solid #e5e7eb; font-size:12.5px;" onclick="this.select()" />
           `;
         } else {
