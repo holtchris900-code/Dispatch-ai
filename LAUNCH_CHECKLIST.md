@@ -42,9 +42,22 @@ One more setting makes cancellation self-service for your clients, instead of th
 
 The dashboard is now protected by a login, but it ships with an insecure placeholder password so it doesn't accidentally lock you out before you've configured a real one. In Render's environment variables, add `DASHBOARD_USERNAME` (anything you like, e.g. your name) and `DASHBOARD_PASSWORD` (something real and private — not something you use anywhere else). Once set, visiting `/dashboard` will prompt for that login before showing any client data.
 
+## Step 8 — Make client data actually stick around
+
+Render's **free** plan wipes your app's local files every time it restarts, redeploys, or spins down from inactivity (which happens automatically after about 15 minutes with no visitors). That means client records can vanish without warning — not a bug in the code, just how the free tier works. Fixing this needs two things, both inside Render, no code involved:
+
+First, upgrade your web service off the Free plan to the **Starter** plan (currently $7/month) — from your service's page, look for **Settings** and a plan/instance type option. This alone also removes the ~50 second "waking up" delay visitors hit after the site's been idle.
+
+Second, attach a **Persistent Disk**: still in Settings, find the **Disks** section, and add one. A **1 GB** disk (currently $0.25/month) is far more than enough for a JSON file of client records. When it asks for a **mount path**, enter exactly `/var/data`.
+
+Finally, add one more environment variable so the app actually uses that disk:
+- `DATA_DIR` = `/var/data`
+
+Save it, let the service redeploy, and client data will survive from then on — restarts, redeploys, and idle periods included. You can confirm it worked by checking Render's logs after the redeploy: the old warning about `DATA_DIR` not being set should be gone.
+
 ## Before you send this to a single real customer
 
-A couple of things still worth double-checking: make sure you've actually completed Step 7 above (the dashboard ships with a fallback password specifically so it isn't wide open, but that fallback is not something to leave in place). Review the AI-disclosure and outbound-calling compliance notes from the earlier planning document with a real look at your state's specific rules before making any outbound calls. And plan to move off the JSON-file storage to a real database once you have more than a handful of clients, since it's fine for testing but not built for scale or simultaneous edits.
+A couple of things still worth double-checking: make sure you've actually completed Step 7 above (the dashboard ships with a fallback password specifically so it isn't wide open, but that fallback is not something to leave in place), and Step 8 (without it, real customer data can silently disappear). Review the AI-disclosure and outbound-calling compliance notes from the earlier planning document with a real look at your state's specific rules before making any outbound calls. Once Step 8 is done, client data survives restarts and redeploys, but it's still a single JSON file rather than a real database — fine through your first several dozen clients, but worth moving to a proper database once you're relying on this daily with real customers and want protection against two edits happening at the exact same instant.
 
 None of this needs to happen before your first test client — it needs to happen before you're handling real customer phone numbers, addresses, and payment information at any real volume.
 
