@@ -14,6 +14,7 @@ const crypto = require('crypto');
 const db = require('./lib/db');
 const { callClaude } = require('./lib/claude');
 const { buildScriptGenerationPrompt, DEMO_SYSTEM_PROMPT } = require('./lib/scriptPrompt');
+const { HELP_CHAT_SYSTEM_PROMPT } = require('./lib/helpChatPrompt');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession } = require('./lib/stripeClient');
 
 const PORT = process.env.PORT || 3000;
@@ -238,6 +239,19 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 400, { error: 'messages array is required' });
       }
       const result = await callClaude({ system: DEMO_SYSTEM_PROMPT, messages });
+      return sendJson(res, 200, result);
+    }
+
+    // --- Help chat widget on the intake form (/onboard) -------------------
+    // Separate from /api/chat (the landing-page demo, which role-plays as a
+    // fictional client's AI receptionist) -- this one answers questions
+    // about the form, pricing, and billing for the person signing up.
+    if (pathname === '/api/help-chat' && req.method === 'POST') {
+      const { messages } = await readBody(req);
+      if (!Array.isArray(messages) || messages.length === 0) {
+        return sendJson(res, 400, { error: 'messages array is required' });
+      }
+      const result = await callClaude({ system: HELP_CHAT_SYSTEM_PROMPT, messages });
       return sendJson(res, 200, result);
     }
 
