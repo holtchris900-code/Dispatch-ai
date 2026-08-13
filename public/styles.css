@@ -210,3 +210,40 @@ legend { font-weight: 700; font-size: 15px; padding: 0 6px; }
 .billing-paid { font-weight: 600; color: #1e40af; background: #eff6ff; border-color: #bfdbfe; }
 .billing-cancelled { color: #991b1b; background: #fef2f2; border-color: #fecaca; }
 
+/* Help chat widget (intake form) */
+.help-chat-widget { position: fixed; right: 20px; bottom: 20px; z-index: 60; }
+.help-chat-toggle {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--accent); color: white; border: none; border-radius: 999px;
+  padding: 13px 18px; font-weight: 600; font-size: 14px; cursor: pointer;
+  box-shadow: var(--shadow-lg); transition: transform 0.15s ease;
+  font-family: inherit;
+}
+.help-chat-toggle:hover { transform: translateY(-2px); }
+.help-chat-toggle-icon {
+  width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.2);
+  display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; flex-shrink: 0;
+}
+.help-chat-panel {
+  position: absolute; bottom: 0; right: 0; width: 340px; max-width: calc(100vw - 40px);
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg); overflow: hidden; display: flex; flex-direction: column;
+}
+.help-chat-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 16px 16px 12px; border-bottom: 1px solid var(--line);
+}
+.help-chat-title { font-weight: 700; font-size: 14.5px; }
+.help-chat-subtitle { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+.help-chat-close {
+  background: none; border: none; font-size: 22px; color: var(--ink-faint); cursor: pointer;
+  line-height: 1; padding: 0 0 0 12px;
+}
+.help-chat-log { padding: 14px; font-size: 13.5px; height: 280px; overflow-y: auto; }
+
+@media (max-width: 480px) {
+  .help-chat-panel { width: calc(100vw - 32px); }
+  .help-chat-toggle-label { display: none; }
+  .help-chat-toggle { padding: 14px; }
+}
+
