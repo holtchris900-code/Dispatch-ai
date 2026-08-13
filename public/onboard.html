@@ -131,6 +131,32 @@
   <footer>Dispatch AI — MVP prototype.</footer>
 </div>
 
+<div class="help-chat-widget" id="helpChatWidget">
+  <button class="help-chat-toggle" id="helpChatToggle" aria-label="Get help with this form">
+    <span class="help-chat-toggle-icon">?</span>
+    <span class="help-chat-toggle-label">Need help?</span>
+  </button>
+  <div class="help-chat-panel" id="helpChatPanel" style="display:none;">
+    <div class="help-chat-header">
+      <div>
+        <div class="help-chat-title">Ask us anything</div>
+        <div class="help-chat-subtitle">About this form, pricing, or how it works</div>
+      </div>
+      <button class="help-chat-close" id="helpChatClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="help-chat-log" id="helpChatLog">
+      <div class="msg ai"><div class="bubble">Hi! I can help explain any part of this form, how pricing works, or what happens after you submit. What's on your mind?</div></div>
+    </div>
+    <div class="chat-input-row" style="padding: 0 14px 14px;">
+      <input id="helpChatInput" type="text" placeholder="Ask a question..." />
+      <button class="btn btn-primary" id="helpChatSend">Send</button>
+    </div>
+    <div class="demo-mode-banner" id="helpChatDemoBanner" style="margin: 0 14px 14px;">
+      Running in placeholder mode — add your ANTHROPIC_API_KEY in .env to get real AI answers instead of this canned message.
+    </div>
+  </div>
+</div>
+
 <script>
 const form = document.getElementById('intakeForm');
 form.addEventListener('submit', async (e) => {
@@ -161,6 +187,73 @@ form.addEventListener('submit', async (e) => {
     submitBtn.textContent = 'Generate my AI agent\'s script';
   }
 });
+
+// --- Help chat widget --------------------------------------------------
+const helpToggle = document.getElementById('helpChatToggle');
+const helpPanel = document.getElementById('helpChatPanel');
+const helpClose = document.getElementById('helpChatClose');
+const helpLog = document.getElementById('helpChatLog');
+const helpInput = document.getElementById('helpChatInput');
+const helpSend = document.getElementById('helpChatSend');
+const helpDemoBanner = document.getElementById('helpChatDemoBanner');
+
+let helpHistory = [
+  { role: 'assistant', content: "Hi! I can help explain any part of this form, how pricing works, or what happens after you submit. What's on your mind?" }
+];
+
+function openHelpChat() {
+  helpPanel.style.display = 'flex';
+  helpToggle.style.display = 'none';
+  helpInput.focus();
+}
+function closeHelpChat() {
+  helpPanel.style.display = 'none';
+  helpToggle.style.display = 'flex';
+}
+
+helpToggle.addEventListener('click', openHelpChat);
+helpClose.addEventListener('click', closeHelpChat);
+
+function addHelpBubble(role, text) {
+  const msg = document.createElement('div');
+  msg.className = 'msg ' + (role === 'user' ? 'user' : 'ai');
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+  msg.appendChild(bubble);
+  helpLog.appendChild(msg);
+  helpLog.scrollTop = helpLog.scrollHeight;
+}
+
+async function sendHelpMessage() {
+  const text = helpInput.value.trim();
+  if (!text) return;
+  helpInput.value = '';
+  addHelpBubble('user', text);
+  helpHistory.push({ role: 'user', content: text });
+
+  addHelpBubble('ai', '…');
+  const placeholder = helpLog.lastElementChild;
+
+  try {
+    const res = await fetch('/api/help-chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ messages: helpHistory })
+    });
+    const data = await res.json();
+    placeholder.remove();
+    addHelpBubble('ai', data.text || 'Sorry, something went wrong.');
+    helpHistory.push({ role: 'assistant', content: data.text || '' });
+    if (data.demoMode) helpDemoBanner.style.display = 'block';
+  } catch (err) {
+    placeholder.remove();
+    addHelpBubble('ai', 'Sorry, something went wrong reaching the AI.');
+  }
+}
+
+helpSend.addEventListener('click', sendHelpMessage);
+helpInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendHelpMessage(); });
 </script>
 </body>
 </html>
