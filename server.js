@@ -403,5 +403,8 @@ server.listen(PORT, () => {
   if (!process.env.STRIPE_SECRET_KEY) {
     console.log('NOTE: STRIPE_SECRET_KEY is not set -- payment links will return a demo-mode message instead of real Stripe checkout links.');
   }
+  if (!process.env.DATA_DIR) {
+    console.log('WARNING: DATA_DIR is not set -- client data is stored on the local filesystem and will be WIPED on every restart, redeploy, or Render free-tier spin-down. See LAUNCH_CHECKLIST.md to fix this with a persistent disk.');
+  }
 });
 
