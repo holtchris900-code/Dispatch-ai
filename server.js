@@ -15,6 +15,7 @@ const db = require('./lib/db');
 const { callClaude } = require('./lib/claude');
 const { buildScriptGenerationPrompt, DEMO_SYSTEM_PROMPT } = require('./lib/scriptPrompt');
 const { HELP_CHAT_SYSTEM_PROMPT } = require('./lib/helpChatPrompt');
+const { buildWidgetChatSystemPrompt } = require('./lib/widgetChatPrompt');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession } = require('./lib/stripeClient');
 
 const PORT = process.env.PORT || 3000;
@@ -27,14 +28,20 @@ const MIME_TYPES = {
   '.json': 'application/json; charset=utf-8',
 };
 
-function sendJson(res, statusCode, data) {
+function sendJson(res, statusCode, data, extraHeaders = {}) {
   const body = JSON.stringify(data);
   res.writeHead(statusCode, {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(body),
+    ...extraHeaders,
   });
   res.end(body);
 }
+
+// The widget-chat endpoint is called from a PAYING CLIENT'S OWN website --
+// some domain that isn't yours -- so, unlike every other route here, it
+// needs to explicitly allow cross-origin requests.
+const WIDGET_CORS_HEADERS = { 'access-control-allow-origin': '*' };
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -230,6 +237,41 @@ const server = http.createServer(async (req, res) => {
       }
 
       return sendJson(res, 200, { received: true });
+    }
+
+    // --- Embeddable website chat widget (runs on a client's OWN site) -----
+    // Browsers send a preflight OPTIONS request before a cross-origin POST
+    // with a JSON content-type -- this has to succeed with the right CORS
+    // headers or the real request never gets sent.
+    if (pathname === '/api/widget-chat' && req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        ...WIDGET_CORS_HEADERS,
+        'access-control-allow-methods': 'POST, OPTIONS',
+        'access-control-allow-headers': 'content-type',
+      });
+      return res.end();
+    }
+
+    if (pathname === '/api/widget-chat' && req.method === 'POST') {
+      const { clientId, messages } = await readBody(req);
+      if (!clientId || !Array.isArray(messages) || messages.length === 0) {
+        return sendJson(res, 400, { error: 'clientId and messages are required' }, WIDGET_CORS_HEADERS);
+      }
+
+      const clientRecord = db.getClient(clientId);
+      // Gated on status === 'paid' specifically -- this is what makes
+      // cancelling a subscription actually turn the widget off, consistent
+      // with how the rest of billing access works in this app.
+      if (!clientRecord || clientRecord.status !== 'paid') {
+        return sendJson(res, 200, {
+          text: "Sorry, chat isn't available right now -- please call or check back later.",
+          unavailable: true,
+        }, WIDGET_CORS_HEADERS);
+      }
+
+      const system = buildWidgetChatSystemPrompt(clientRecord);
+      const result = await callClaude({ system, messages });
+      return sendJson(res, 200, result, WIDGET_CORS_HEADERS);
     }
 
     // --- Landing page demo chat widget -----------------------------------
