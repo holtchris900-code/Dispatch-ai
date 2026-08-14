@@ -91,6 +91,12 @@ async function loadClients() {
             <div style="font-size:12px; color:#1e40af; margin-bottom:8px;">Send this to the client to paste into their own website (just before <code>&lt;/body&gt;</code>). It only works while they're on the Paid plan.</div>
             <textarea readonly style="width:100%; padding:8px; border-radius:6px; border:1px solid #bfdbfe; font-size:11.5px; font-family:ui-monospace, monospace; min-height:60px;" onclick="this.select()">${widgetSnippet}</textarea>
           </div>
+          <div style="margin-top:16px; padding-top:14px; border-top:1px solid #bfdbfe;">
+            <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">Website chat conversations</div>
+            <div style="font-size:12px; color:#1e40af; margin-bottom:8px;">Every conversation their widget has had with a real visitor, and whether it turned into a booking.</div>
+            <button class="btn btn-secondary conversations-btn" data-id="${client.id}">View conversations</button>
+            <div class="conversations-box" data-id="${client.id}" style="margin-top:10px; display:none;"></div>
+          </div>
         </div>
       `;
     } else if (client.status === 'cancelled') {
@@ -184,6 +190,64 @@ async function loadClients() {
     });
   });
 
+  const OUTCOME_LABELS = {
+    booked: '✅ Booked',
+    unbooked_lead: '🟠 Unbooked lead',
+    resolved_question: '💬 Question answered',
+    unclear: '⏳ Not reviewed yet',
+    unclassified: '⏳ Not reviewed yet',
+  };
+
+  document.querySelectorAll('.conversations-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const box = document.querySelector(`.conversations-box[data-id="${id}"]`);
+
+      if (box.style.display === 'block') {
+        box.style.display = 'none';
+        return;
+      }
+
+      box.style.display = 'block';
+      box.innerHTML = '<div style="font-size:12.5px; color:#6b7280;">Loading conversations...</div>';
+
+      try {
+        const res = await fetch(`/api/clients/${id}/conversations`);
+        const conversations = await res.json();
+
+        if (!Array.isArray(conversations) || conversations.length === 0) {
+          box.innerHTML = '<div style="font-size:12.5px; color:#9ca3af;">No website chat conversations yet.</div>';
+          return;
+        }
+
+        box.innerHTML = conversations.map((c) => {
+          const outcomeLabel = OUTCOME_LABELS[c.outcome] || c.outcome;
+          const contactBits = [c.contactName, c.contactEmail, c.contactPhone].filter(Boolean).map(escapeAttr).join(' · ');
+          const transcript = (c.messages || [])
+            .map((m) => `${m.role === 'user' ? 'Visitor' : 'AI'}: ${m.content}`)
+            .join('\n');
+
+          return `
+            <div style="border:1px solid #e5e7eb; border-radius:10px; padding:10px; margin-bottom:8px; background:#fff;">
+              <div style="display:flex; justify-content:space-between; gap:10px; font-size:12px; color:#6b7280;">
+                <span>${new Date(c.updatedAt).toLocaleString()}</span>
+                <span>${outcomeLabel}</span>
+              </div>
+              ${contactBits ? `<div style="font-size:12.5px; margin-top:4px;">${contactBits}</div>` : ''}
+              ${c.summary ? `<div style="font-size:12.5px; color:#374151; margin-top:4px;">${escapeAttr(c.summary)}</div>` : ''}
+              <details style="margin-top:6px;">
+                <summary style="font-size:12px; color:#146856; cursor:pointer;">View full chat</summary>
+                <pre style="white-space:pre-wrap; font-size:11.5px; background:#f6f7f9; border-radius:6px; padding:8px; margin-top:6px;">${escapeAttr(transcript)}</pre>
+              </details>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        box.innerHTML = '<div style="font-size:12.5px; color:#b91c1c;">Something went wrong loading conversations.</div>';
+      }
+    });
+  });
+
   document.querySelectorAll('.portal-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.id;
@@ -216,4 +280,3 @@ loadClients();
 </script>
 </body>
 </html>
-
