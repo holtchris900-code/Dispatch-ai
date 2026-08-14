@@ -16,6 +16,7 @@ const { callClaude } = require('./lib/claude');
 const { buildScriptGenerationPrompt, DEMO_SYSTEM_PROMPT } = require('./lib/scriptPrompt');
 const { HELP_CHAT_SYSTEM_PROMPT } = require('./lib/helpChatPrompt');
 const { buildWidgetChatSystemPrompt } = require('./lib/widgetChatPrompt');
+const { buildConversationInsightPrompt, parseConversationInsight } = require('./lib/conversationInsightPrompt');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession } = require('./lib/stripeClient');
 
 const PORT = process.env.PORT || 3000;
@@ -253,7 +254,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/widget-chat' && req.method === 'POST') {
-      const { clientId, messages } = await readBody(req);
+      const { clientId, messages, conversationId } = await readBody(req);
       if (!clientId || !Array.isArray(messages) || messages.length === 0) {
         return sendJson(res, 400, { error: 'clientId and messages are required' }, WIDGET_CORS_HEADERS);
       }
@@ -271,7 +272,19 @@ const server = http.createServer(async (req, res) => {
 
       const system = buildWidgetChatSystemPrompt(clientRecord);
       const result = await callClaude({ system, messages });
-      return sendJson(res, 200, result, WIDGET_CORS_HEADERS);
+
+      // Remember this conversation so the business owner can see it in their
+      // dashboard, even after the visitor closes the tab -- the foundation
+      // for eventually following up with visitors who don't book.
+      const fullTranscript = [...messages, { role: 'assistant', content: result.text }];
+      const convo = db.appendConversationTurn({
+        conversationId,
+        clientId,
+        source: 'website-widget',
+        messages: fullTranscript,
+      });
+
+      return sendJson(res, 200, { ...result, conversationId: convo.id }, WIDGET_CORS_HEADERS);
     }
 
     // --- Landing page demo chat widget -----------------------------------
@@ -400,6 +413,46 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, result);
     }
 
+    // Every website-widget conversation a paying client has had, tagged with
+    // an outcome (booked / unbooked lead / question answered / unclear) so
+    // the founder -- or the client, once they get their own view of this --
+    // can see what's happening without reading every transcript. Any
+    // conversation that's gone quiet for a while and hasn't been reviewed
+    // yet gets classified here, on demand, rather than on a background timer
+    // -- simplest thing that works for the volume an MVP will see.
+    const clientConversationsMatch = pathname.match(/^\/api\/clients\/([^/]+)\/conversations$/);
+    if (clientConversationsMatch && req.method === 'GET') {
+      const clientRecord = db.getClient(clientConversationsMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+
+      const conversations = db.listConversationsForClient(clientRecord.id);
+      const IDLE_MS = 5 * 60 * 1000;
+      const now = Date.now();
+
+      for (const convo of conversations) {
+        const isIdle = now - new Date(convo.updatedAt).getTime() > IDLE_MS;
+        const hasExchange = convo.messages.length >= 2;
+        if (convo.outcome !== 'unclassified' || !isIdle || !hasExchange) continue;
+
+        const { system, messages } = buildConversationInsightPrompt(clientRecord, convo.messages);
+        const result = await callClaude({ system, messages, maxTokens: 300 });
+        const insight = result.demoMode
+          ? {
+              outcome: 'unclear',
+              contactName: null,
+              contactEmail: null,
+              contactPhone: null,
+              summary: '(AI review needs a real ANTHROPIC_API_KEY -- this is a placeholder.)',
+            }
+          : parseConversationInsight(result.text);
+
+        const updated = db.updateConversation(convo.id, { ...insight, classifiedAt: new Date().toISOString() });
+        Object.assign(convo, updated);
+      }
+
+      return sendJson(res, 200, conversations);
+    }
+
     const clientGetMatch = pathname.match(/^\/api\/clients\/([^/]+)$/);
     if (clientGetMatch && req.method === 'GET') {
       const clientRecord = db.getClient(clientGetMatch[1]);
@@ -463,4 +516,3 @@ server.listen(PORT, () => {
     console.log('WARNING: DATA_DIR is not set -- client data is stored on the local filesystem and will be WIPED on every restart, redeploy, or Render free-tier spin-down. See LAUNCH_CHECKLIST.md to fix this with a persistent disk.');
   }
 });
-
