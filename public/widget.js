@@ -96,6 +96,10 @@
     var closeBtn = panel.querySelector('.dai-w-close');
 
     var history = [{ role: 'assistant', content: 'Hi! How can I help today?' }];
+    // Set once the server creates a conversation record on the first reply,
+    // then resent with every later message so the whole chat gets stored
+    // under one conversation instead of a new one each time.
+    var conversationId = null;
 
     function addBubble(role, text) {
       var msg = d.createElement('div');
@@ -120,13 +124,14 @@
       fetch(apiBase + '/api/widget-chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ clientId: clientId, messages: history })
+        body: JSON.stringify({ clientId: clientId, messages: history, conversationId: conversationId })
       })
         .then(function (r) { return r.json(); })
         .then(function (data) {
           placeholder.remove();
           addBubble('ai', data.text || 'Sorry, something went wrong.');
           history.push({ role: 'assistant', content: data.text || '' });
+          if (data.conversationId) conversationId = data.conversationId;
         })
         .catch(function () {
           placeholder.remove();
@@ -149,4 +154,3 @@
     d.addEventListener('DOMContentLoaded', init);
   }
 })();
-
