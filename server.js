@@ -17,6 +17,7 @@ const { buildScriptGenerationPrompt, DEMO_SYSTEM_PROMPT } = require('./lib/scrip
 const { HELP_CHAT_SYSTEM_PROMPT } = require('./lib/helpChatPrompt');
 const { buildWidgetChatSystemPrompt } = require('./lib/widgetChatPrompt');
 const { buildConversationInsightPrompt, parseConversationInsight } = require('./lib/conversationInsightPrompt');
+const { buildFollowUpDraftPrompt, parseFollowUpDraft } = require('./lib/followUpPrompt');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession } = require('./lib/stripeClient');
 
 const PORT = process.env.PORT || 3000;
@@ -432,25 +433,80 @@ const server = http.createServer(async (req, res) => {
       for (const convo of conversations) {
         const isIdle = now - new Date(convo.updatedAt).getTime() > IDLE_MS;
         const hasExchange = convo.messages.length >= 2;
-        if (convo.outcome !== 'unclassified' || !isIdle || !hasExchange) continue;
 
-        const { system, messages } = buildConversationInsightPrompt(clientRecord, convo.messages);
-        const result = await callClaude({ system, messages, maxTokens: 300 });
-        const insight = result.demoMode
-          ? {
-              outcome: 'unclear',
-              contactName: null,
-              contactEmail: null,
-              contactPhone: null,
-              summary: '(AI review needs a real ANTHROPIC_API_KEY -- this is a placeholder.)',
-            }
-          : parseConversationInsight(result.text);
+        if (convo.outcome === 'unclassified' && isIdle && hasExchange) {
+          const { system, messages } = buildConversationInsightPrompt(clientRecord, convo.messages);
+          const result = await callClaude({ system, messages, maxTokens: 300 });
+          const insight = result.demoMode
+            ? {
+                outcome: 'unclear',
+                contactName: null,
+                contactEmail: null,
+                contactPhone: null,
+                summary: '(AI review needs a real ANTHROPIC_API_KEY -- this is a placeholder.)',
+              }
+            : parseConversationInsight(result.text);
 
-        const updated = db.updateConversation(convo.id, { ...insight, classifiedAt: new Date().toISOString() });
-        Object.assign(convo, updated);
+          const updated = db.updateConversation(convo.id, { ...insight, classifiedAt: new Date().toISOString() });
+          Object.assign(convo, updated);
+        }
+
+        // Stage 2 of "never let a lead go cold": draft (never send) a
+        // follow-up for any unbooked lead we have an email for. Only drafts
+        // once -- if the business owner edits it, we don't want to silently
+        // overwrite their edits on the next dashboard load.
+        if (convo.outcome === 'unbooked_lead' && convo.contactEmail && convo.followUpStatus === 'none') {
+          const { system, messages } = buildFollowUpDraftPrompt(clientRecord, convo);
+          const result = await callClaude({ system, messages, maxTokens: 300 });
+          const draft = result.demoMode
+            ? {
+                subject: '(placeholder subject -- add a real ANTHROPIC_API_KEY)',
+                body: '(AI follow-up drafting needs a real ANTHROPIC_API_KEY -- this is a placeholder.)',
+              }
+            : parseFollowUpDraft(result.text);
+
+          const updated = db.updateConversation(convo.id, {
+            followUpSubject: draft.subject,
+            followUpBody: draft.body,
+            followUpStatus: draft.body ? 'drafted' : 'none',
+            followUpDraftedAt: new Date().toISOString(),
+          });
+          Object.assign(convo, updated);
+        }
       }
 
       return sendJson(res, 200, conversations);
+    }
+
+    // Lets the founder edit an AI-drafted follow-up message before it's ever
+    // used -- same "review before it goes out" pattern as editing the main
+    // agent script. Nothing gets sent automatically yet; this just updates
+    // the stored draft.
+    const followUpEditMatch = pathname.match(/^\/api\/clients\/([^/]+)\/conversations\/([^/]+)\/follow-up$/);
+    if (followUpEditMatch && req.method === 'POST') {
+      const [, clientId, convoId] = followUpEditMatch;
+      const convo = db.getConversation(convoId);
+      if (!convo || convo.clientId !== clientId) return sendJson(res, 404, { error: 'not found' });
+
+      const { subject, body } = await readBody(req);
+      const updated = db.updateConversation(convoId, { followUpSubject: subject, followUpBody: body });
+      return sendJson(res, 200, updated);
+    }
+
+    // Marks a follow-up draft as approved. Doesn't send anything yet -- there
+    // is no sending mechanism built. This just records that the business
+    // owner has signed off on the wording, ready for whenever sending exists.
+    const followUpApproveMatch = pathname.match(/^\/api\/clients\/([^/]+)\/conversations\/([^/]+)\/follow-up\/approve$/);
+    if (followUpApproveMatch && req.method === 'POST') {
+      const [, clientId, convoId] = followUpApproveMatch;
+      const convo = db.getConversation(convoId);
+      if (!convo || convo.clientId !== clientId) return sendJson(res, 404, { error: 'not found' });
+
+      const updated = db.updateConversation(convoId, {
+        followUpStatus: 'approved',
+        followUpApprovedAt: new Date().toISOString(),
+      });
+      return sendJson(res, 200, updated);
     }
 
     const clientGetMatch = pathname.match(/^\/api\/clients\/([^/]+)$/);
