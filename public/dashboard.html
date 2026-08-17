@@ -227,6 +227,30 @@ async function loadClients() {
             .map((m) => `${m.role === 'user' ? 'Visitor' : 'AI'}: ${m.content}`)
             .join('\n');
 
+          let followUpHtml = '';
+          if (c.outcome === 'unbooked_lead') {
+            if (!c.contactEmail) {
+              followUpHtml = `<div style="margin-top:8px; font-size:12px; color:#9ca3af;">No email captured, so a follow-up can't be drafted for this visitor.</div>`;
+            } else if (c.followUpStatus === 'none') {
+              followUpHtml = `<div style="margin-top:8px; font-size:12px; color:#9ca3af;">Drafting a follow-up message... check back in a moment.</div>`;
+            } else {
+              const isApproved = c.followUpStatus === 'approved';
+              followUpHtml = `
+                <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #e5e7eb;">
+                  <div style="font-size:12px; font-weight:600; color:#374151; margin-bottom:6px;">
+                    Follow-up draft ${isApproved ? '(Approved ✓ -- nothing sends automatically yet)' : '(review before using it)'}
+                  </div>
+                  <input type="text" class="followup-subject" data-convo-id="${c.id}" data-client-id="${c.clientId}" value="${escapeAttr(c.followUpSubject || '')}" placeholder="Subject" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid #e5e7eb; font-size:12.5px; margin-bottom:6px;" />
+                  <textarea class="followup-body" data-convo-id="${c.id}" data-client-id="${c.clientId}" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid #e5e7eb; font-size:12.5px; min-height:70px;">${escapeAttr(c.followUpBody || '')}</textarea>
+                  <div style="margin-top:6px; display:flex; gap:8px;">
+                    <button class="btn btn-secondary save-followup-btn" data-convo-id="${c.id}" data-client-id="${c.clientId}">Save edits</button>
+                    <button class="btn btn-primary approve-followup-btn" data-convo-id="${c.id}" data-client-id="${c.clientId}" ${isApproved ? 'disabled' : ''}>${isApproved ? 'Approved ✓' : 'Approve draft'}</button>
+                  </div>
+                </div>
+              `;
+            }
+          }
+
           return `
             <div style="border:1px solid #e5e7eb; border-radius:10px; padding:10px; margin-bottom:8px; background:#fff;">
               <div style="display:flex; justify-content:space-between; gap:10px; font-size:12px; color:#6b7280;">
@@ -239,9 +263,36 @@ async function loadClients() {
                 <summary style="font-size:12px; color:#146856; cursor:pointer;">View full chat</summary>
                 <pre style="white-space:pre-wrap; font-size:11.5px; background:#f6f7f9; border-radius:6px; padding:8px; margin-top:6px;">${escapeAttr(transcript)}</pre>
               </details>
+              ${followUpHtml}
             </div>
           `;
         }).join('');
+
+        box.querySelectorAll('.save-followup-btn').forEach((followBtn) => {
+          followBtn.addEventListener('click', async () => {
+            const convoId = followBtn.dataset.convoId;
+            const cId = followBtn.dataset.clientId;
+            const subjectInput = box.querySelector(`.followup-subject[data-convo-id="${convoId}"]`);
+            const bodyInput = box.querySelector(`.followup-body[data-convo-id="${convoId}"]`);
+            followBtn.textContent = 'Saving...';
+            await fetch(`/api/clients/${cId}/conversations/${convoId}/follow-up`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ subject: subjectInput.value, body: bodyInput.value })
+            });
+            followBtn.textContent = 'Save edits';
+          });
+        });
+
+        box.querySelectorAll('.approve-followup-btn').forEach((approveBtn) => {
+          approveBtn.addEventListener('click', async () => {
+            const convoId = approveBtn.dataset.convoId;
+            const cId = approveBtn.dataset.clientId;
+            await fetch(`/api/clients/${cId}/conversations/${convoId}/follow-up/approve`, { method: 'POST' });
+            approveBtn.textContent = 'Approved ✓';
+            approveBtn.disabled = true;
+          });
+        });
       } catch (err) {
         box.innerHTML = '<div style="font-size:12.5px; color:#b91c1c;">Something went wrong loading conversations.</div>';
       }
