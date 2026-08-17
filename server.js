@@ -18,6 +18,7 @@ const { HELP_CHAT_SYSTEM_PROMPT } = require('./lib/helpChatPrompt');
 const { buildWidgetChatSystemPrompt } = require('./lib/widgetChatPrompt');
 const { buildConversationInsightPrompt, parseConversationInsight } = require('./lib/conversationInsightPrompt');
 const { buildFollowUpDraftPrompt, parseFollowUpDraft } = require('./lib/followUpPrompt');
+const { sendEmail } = require('./lib/emailClient');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession } = require('./lib/stripeClient');
 
 const PORT = process.env.PORT || 3000;
@@ -507,6 +508,46 @@ const server = http.createServer(async (req, res) => {
         followUpApprovedAt: new Date().toISOString(),
       });
       return sendJson(res, 200, updated);
+    }
+
+    // Stage 3 of "never let a lead go cold": actually send an approved
+    // follow-up. Deliberately a separate, explicit action from "Approve" --
+    // approving just signs off on the wording, this is the one click that
+    // actually puts an email in a real person's inbox, so it stays a
+    // distinct, founder-triggered step rather than firing automatically the
+    // moment something is approved.
+    const followUpSendMatch = pathname.match(/^\/api\/clients\/([^/]+)\/conversations\/([^/]+)\/follow-up\/send$/);
+    if (followUpSendMatch && req.method === 'POST') {
+      const [, clientId, convoId] = followUpSendMatch;
+      const convo = db.getConversation(convoId);
+      if (!convo || convo.clientId !== clientId) return sendJson(res, 404, { error: 'not found' });
+
+      if (convo.followUpStatus !== 'approved') {
+        return sendJson(res, 400, { error: 'Approve the draft before sending it.' });
+      }
+      if (!convo.contactEmail) {
+        return sendJson(res, 400, { error: 'No email address on file for this conversation.' });
+      }
+
+      const clientRecord = db.getClient(clientId);
+      const companyName = clientRecord?.intake?.companyName || 'the business';
+
+      const result = await sendEmail({
+        to: convo.contactEmail,
+        subject: convo.followUpSubject || 'Following up',
+        text: convo.followUpBody || '',
+        fromName: companyName,
+      });
+
+      if (result.demoMode) {
+        return sendJson(res, 200, result);
+      }
+
+      const updated = db.updateConversation(convoId, {
+        followUpStatus: 'sent',
+        followUpSentAt: new Date().toISOString(),
+      });
+      return sendJson(res, 200, { ...result, conversation: updated });
     }
 
     const clientGetMatch = pathname.match(/^\/api\/clients\/([^/]+)$/);
