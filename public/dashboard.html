@@ -235,17 +235,25 @@ async function loadClients() {
               followUpHtml = `<div style="margin-top:8px; font-size:12px; color:#9ca3af;">Drafting a follow-up message... check back in a moment.</div>`;
             } else {
               const isApproved = c.followUpStatus === 'approved';
+              const isSent = c.followUpStatus === 'sent';
+              const statusLabel = isSent
+                ? `(Sent ✓ ${c.followUpSentAt ? new Date(c.followUpSentAt).toLocaleString() : ''})`
+                : isApproved
+                ? '(Approved ✓ -- ready to send)'
+                : '(review before using it)';
               followUpHtml = `
                 <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #e5e7eb;">
                   <div style="font-size:12px; font-weight:600; color:#374151; margin-bottom:6px;">
-                    Follow-up draft ${isApproved ? '(Approved ✓ -- nothing sends automatically yet)' : '(review before using it)'}
+                    Follow-up draft ${statusLabel}
                   </div>
-                  <input type="text" class="followup-subject" data-convo-id="${c.id}" data-client-id="${c.clientId}" value="${escapeAttr(c.followUpSubject || '')}" placeholder="Subject" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid #e5e7eb; font-size:12.5px; margin-bottom:6px;" />
-                  <textarea class="followup-body" data-convo-id="${c.id}" data-client-id="${c.clientId}" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid #e5e7eb; font-size:12.5px; min-height:70px;">${escapeAttr(c.followUpBody || '')}</textarea>
-                  <div style="margin-top:6px; display:flex; gap:8px;">
-                    <button class="btn btn-secondary save-followup-btn" data-convo-id="${c.id}" data-client-id="${c.clientId}">Save edits</button>
-                    <button class="btn btn-primary approve-followup-btn" data-convo-id="${c.id}" data-client-id="${c.clientId}" ${isApproved ? 'disabled' : ''}>${isApproved ? 'Approved ✓' : 'Approve draft'}</button>
+                  <input type="text" class="followup-subject" data-convo-id="${c.id}" data-client-id="${c.clientId}" value="${escapeAttr(c.followUpSubject || '')}" placeholder="Subject" ${isSent ? 'disabled' : ''} style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid #e5e7eb; font-size:12.5px; margin-bottom:6px;" />
+                  <textarea class="followup-body" data-convo-id="${c.id}" data-client-id="${c.clientId}" ${isSent ? 'disabled' : ''} style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid #e5e7eb; font-size:12.5px; min-height:70px;">${escapeAttr(c.followUpBody || '')}</textarea>
+                  <div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
+                    <button class="btn btn-secondary save-followup-btn" data-convo-id="${c.id}" data-client-id="${c.clientId}" ${isSent ? 'disabled' : ''}>Save edits</button>
+                    <button class="btn btn-primary approve-followup-btn" data-convo-id="${c.id}" data-client-id="${c.clientId}" ${isApproved || isSent ? 'disabled' : ''}>${isApproved || isSent ? 'Approved ✓' : 'Approve draft'}</button>
+                    ${!isSent ? `<button class="btn btn-primary send-followup-btn" data-convo-id="${c.id}" data-client-id="${c.clientId}" ${isApproved ? '' : 'disabled'}>Send now</button>` : `<button class="btn btn-secondary" disabled>Sent ✓</button>`}
                   </div>
+                  <div class="send-result" data-convo-id="${c.id}" style="margin-top:6px; font-size:12px;"></div>
                 </div>
               `;
             }
@@ -291,6 +299,40 @@ async function loadClients() {
             await fetch(`/api/clients/${cId}/conversations/${convoId}/follow-up/approve`, { method: 'POST' });
             approveBtn.textContent = 'Approved ✓';
             approveBtn.disabled = true;
+            const sendBtn = box.querySelector(`.send-followup-btn[data-convo-id="${convoId}"]`);
+            if (sendBtn) sendBtn.disabled = false;
+          });
+        });
+
+        box.querySelectorAll('.send-followup-btn').forEach((sendBtn) => {
+          sendBtn.addEventListener('click', async () => {
+            const convoId = sendBtn.dataset.convoId;
+            const cId = sendBtn.dataset.clientId;
+            const resultBox = box.querySelector(`.send-result[data-convo-id="${convoId}"]`);
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+
+            try {
+              const res = await fetch(`/api/clients/${cId}/conversations/${convoId}/follow-up/send`, { method: 'POST' });
+              const data = await res.json();
+
+              if (data.demoMode) {
+                if (resultBox) resultBox.innerHTML = `<span style="color:#9a3412;">${data.message}</span>`;
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send now';
+              } else if (data.error) {
+                if (resultBox) resultBox.innerHTML = `<span style="color:#b91c1c;">${data.error}</span>`;
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send now';
+              } else {
+                sendBtn.textContent = 'Sent ✓';
+                if (resultBox) resultBox.innerHTML = `<span style="color:#166534;">Sent!</span>`;
+              }
+            } catch (err) {
+              if (resultBox) resultBox.innerHTML = `<span style="color:#b91c1c;">Something went wrong sending the email.</span>`;
+              sendBtn.disabled = false;
+              sendBtn.textContent = 'Send now';
+            }
           });
         });
       } catch (err) {
