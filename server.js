@@ -18,6 +18,7 @@ const { HELP_CHAT_SYSTEM_PROMPT } = require('./lib/helpChatPrompt');
 const { buildWidgetChatSystemPrompt } = require('./lib/widgetChatPrompt');
 const { buildConversationInsightPrompt, parseConversationInsight } = require('./lib/conversationInsightPrompt');
 const { buildFollowUpDraftPrompt, parseFollowUpDraft } = require('./lib/followUpPrompt');
+const { buildScriptSafetyCheckPrompt, parseScriptSafetyCheck } = require('./lib/scriptSafetyCheckPrompt');
 const { sendEmail } = require('./lib/emailClient');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession } = require('./lib/stripeClient');
 
@@ -30,6 +31,29 @@ const MIME_TYPES = {
   '.js': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
 };
+
+// Sends the founder a heads-up email whenever a new signup needs their
+// manual review (or when an auto-approval couldn't fully complete, e.g.
+// because Stripe isn't configured). Reuses FOLLOWUP_REPLY_TO -- the
+// founder's own inbox, already set up for lead follow-up replies -- rather
+// than asking for a second "founder email" setting. If it's not set, or the
+// send fails for any reason, this quietly does nothing: the dashboard still
+// shows the flagged client either way, so a missing notification never
+// hides anything, it just means the founder has to notice it themselves.
+async function notifyFounder({ companyName, reason }) {
+  const founderEmail = process.env.FOLLOWUP_REPLY_TO;
+  if (!founderEmail) return;
+  try {
+    await sendEmail({
+      to: founderEmail,
+      subject: `Dispatch AI -- "${companyName}" needs your review`,
+      text: `A new signup needs a manual look before their AI agent's script can go out.\n\nBusiness: ${companyName}\nWhy: ${reason}\n\nCheck it in your dashboard: /dashboard`,
+      fromName: 'Dispatch AI',
+    });
+  } catch (err) {
+    // Never let a notification failure affect the signup itself.
+  }
+}
 
 function sendJson(res, statusCode, data, extraHeaders = {}) {
   const body = JSON.stringify(data);
@@ -318,6 +342,9 @@ const server = http.createServer(async (req, res) => {
       if (!intake.companyName) {
         return sendJson(res, 400, { error: 'companyName is required' });
       }
+      if (!intake.contactEmail) {
+        return sendJson(res, 400, { error: 'contactEmail is required' });
+      }
 
       const id = crypto.randomUUID();
       const client = {
@@ -333,11 +360,92 @@ const server = http.createServer(async (req, res) => {
       const { system, messages } = buildScriptGenerationPrompt(intake);
       const result = await callClaude({ system, messages, maxTokens: 1200 });
 
-      const updated = db.updateClient(id, {
+      let updated = db.updateClient(id, {
         status: 'draft',
         script: result.text,
         demoMode: result.demoMode,
       });
+
+      // --- Automatic review ---------------------------------------------
+      // A second, independent AI pass reads the draft script back against
+      // the intake answers, looking specifically for the kinds of mistakes
+      // a human reviewer would have caught (missing pricing, contradictions,
+      // leftover placeholder text, wrong tone, a missing AI-disclosure
+      // greeting). If it's confident nothing is wrong, the client is
+      // auto-approved and sent a real payment link immediately by email --
+      // no waiting on the founder. If it's not confident, or anything at
+      // all goes wrong in this block, this fails SAFE-side: the client
+      // stays in manual "draft" review exactly like before this feature
+      // existed, and the founder gets emailed so nothing sits unnoticed.
+      //
+      // This whole step is skipped in demo mode (no ANTHROPIC_API_KEY) --
+      // there's no real script yet to check, so it falls back to the
+      // original fully-manual flow untouched.
+      if (!result.demoMode) {
+        try {
+          const safetyPrompt = buildScriptSafetyCheckPrompt(intake, result.text);
+          const safetyResult = await callClaude({
+            system: safetyPrompt.system,
+            messages: safetyPrompt.messages,
+            maxTokens: 300,
+          });
+          const safety = parseScriptSafetyCheck(safetyResult.text);
+
+          if (!safetyResult.demoMode && safety.status === 'SAFE') {
+            updated = db.updateClient(id, {
+              status: 'approved',
+              approvedAt: new Date().toISOString(),
+              reviewMode: 'auto',
+              reviewReason: null,
+            });
+
+            const baseUrl = `${url.protocol}//${url.host}`;
+            const checkout = await createCheckoutSession({
+              clientId: id,
+              priceId: process.env.STRIPE_PRICE_ID_STARTER,
+              companyName: intake.companyName,
+              successUrl: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+              cancelUrl: `${baseUrl}/?checkout=cancelled`,
+            });
+
+            if (!checkout.demoMode) {
+              db.updateClient(id, { pendingPlan: 'starter' });
+              const emailResult = await sendEmail({
+                to: intake.contactEmail,
+                subject: `${intake.companyName} -- your AI agent is ready to go live`,
+                text: `Hi,\n\nThanks for signing up for Dispatch AI. Your AI agent's script has been reviewed and it's ready to go.\n\nComplete your subscription here to go live:\n${checkout.url}\n\nOnce you're live, you'll be able to review and tweak the script again any time.\n\n-- Dispatch AI`,
+                fromName: 'Dispatch AI',
+              });
+              updated = db.updateClient(id, {
+                customerEmailSentAt: emailResult.demoMode ? null : new Date().toISOString(),
+                customerEmailDemoMode: !!emailResult.demoMode,
+              });
+            } else {
+              // Safe to auto-approve, but there's no real payment link to
+              // send (Stripe isn't fully configured yet) -- don't email a
+              // customer a broken link, tell the founder instead.
+              await notifyFounder({
+                companyName: intake.companyName,
+                reason: `Auto-approved, but couldn't generate a real payment link yet (${checkout.message}). Send one manually from the dashboard once Stripe is configured.`,
+              });
+            }
+          } else {
+            updated = db.updateClient(id, {
+              reviewMode: 'manual',
+              reviewReason:
+                safety.reason ||
+                "The automatic check couldn't confirm this script was safe to send without a look first.",
+            });
+            await notifyFounder({ companyName: intake.companyName, reason: updated.reviewReason });
+          }
+        } catch (err) {
+          updated = db.updateClient(id, {
+            reviewMode: 'manual',
+            reviewReason: 'Something went wrong during the automatic check, so this needs a manual look.',
+          });
+          await notifyFounder({ companyName: intake.companyName, reason: updated.reviewReason });
+        }
+      }
 
       return sendJson(res, 200, updated);
     }
