@@ -20,11 +20,15 @@
 
   <section style="padding: 40px 0;">
     <h1 style="font-size:30px;">Tell us about your company</h1>
-    <p style="color:#4b5563; max-width: 60ch;">This takes about 10 minutes. Your answers feed directly into your AI agent's script — you'll get to review and edit the draft before anything goes live.</p>
+    <p style="color:#4b5563; max-width: 60ch;">This takes about 10 minutes. Your answers feed directly into your AI agent's script — most scripts are checked and approved automatically within moments, and we'll email you a link to pay and go live as soon as that happens.</p>
 
     <form class="intake" id="intakeForm">
       <fieldset>
         <legend>1. Company Basics</legend>
+        <div class="field">
+          <label>Your email address</label>
+          <input name="contactEmail" type="email" required placeholder="you@yourcompany.com" />
+        </div>
         <div class="field">
           <label>Company name</label>
           <input name="companyName" required placeholder="e.g. Summit Air & Plumbing" />
@@ -121,7 +125,7 @@
 
     <div id="result" style="display:none; margin-top: 32px;">
       <h2 style="font-size:22px;">Your draft script</h2>
-      <p style="color:#4b5563;">Here's a preview of what your AI agent's script will say. Our team will review it, and we'll send you a link to pay and go live once it's approved.</p>
+      <p id="resultMessage" style="color:#4b5563;">Here's a preview of what your AI agent's script will say.</p>
       <pre id="scriptOutput" style="white-space:pre-wrap; background:#f6f7f9; border:1px solid #e5e7eb; border-radius:12px; padding:18px; font-size:13.5px;"></pre>
     </div>
   </section>
@@ -177,6 +181,16 @@ form.addEventListener('submit', async (e) => {
 
     document.getElementById('result').style.display = 'block';
     document.getElementById('scriptOutput').textContent = data.script;
+
+    const messageEl = document.getElementById('resultMessage');
+    if (data.status === 'approved' && data.reviewMode === 'auto' && data.customerEmailSentAt) {
+      messageEl.textContent = `Good news — this passed our automatic check. Check ${payload.contactEmail} for a link to pay and go live.`;
+    } else if (data.status === 'approved' && data.reviewMode === 'auto') {
+      messageEl.textContent = "This passed our automatic check — we'll be in touch shortly with a link to pay and go live.";
+    } else {
+      messageEl.textContent = "We're taking a closer look at a couple of details before this goes live — we'll email you as soon as it's ready.";
+    }
+
     window.scrollTo({ top: document.getElementById('result').offsetTop - 20, behavior: 'smooth' });
   } catch (err) {
     alert('Something went wrong: ' + err.message);
