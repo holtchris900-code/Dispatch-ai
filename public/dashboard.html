@@ -79,6 +79,27 @@ async function loadClients() {
       const planLabel = client.plan === 'growth' ? 'Growth' : client.plan === 'starter' ? 'Starter' : 'plan unknown';
       const companyName = client.intake?.companyName || '';
       const widgetSnippet = `<script src="${window.location.origin}/widget.js" data-client-id="${client.id}" data-company-name="${escapeAttr(companyName)}" data-label="Chat with us"><` + `/script>`;
+
+      let phoneHtml;
+      if (!client.retellAgentId) {
+        phoneHtml = `
+          <div style="font-size:12px; color:#1e40af; margin-bottom:8px;">Push this client's approved script to Retell AI so it can answer real phone calls, not just website chat.</div>
+          <button class="btn btn-secondary create-phone-agent-btn" data-id="${client.id}">Create phone agent</button>
+          <div class="phone-agent-result" data-id="${client.id}" style="margin-top:10px; display:none;"></div>
+        `;
+      } else {
+        const numberLine = client.retellPhoneNumber
+          ? `<div style="font-size:13px; font-weight:600; margin-bottom:6px;">📞 Live number: ${escapeAttr(client.retellPhoneNumber)}</div>`
+          : `<div style="font-size:12px; color:#1e40af; margin-bottom:8px;">Phone agent created. Now, inside Retell's own dashboard (no code needed): go to Phone Numbers → buy or import a number → assign its inbound agent to the ID below. Call it yourself to test before giving it to the client.</div>`;
+        phoneHtml = `
+          ${numberLine}
+          <div style="font-size:11.5px; color:#1e40af; margin-bottom:8px;">Retell agent ID: <code style="font-size:11px;">${client.retellAgentId}</code></div>
+          <input type="text" class="phone-number-input" data-id="${client.id}" value="${escapeAttr(client.retellPhoneNumber || '')}" placeholder="Paste the number here once it's assigned in Retell" style="width:100%; padding:8px; border-radius:6px; border:1px solid #bfdbfe; font-size:12.5px; margin-bottom:8px;" />
+          <button class="btn btn-secondary save-phone-number-btn" data-id="${client.id}">${client.retellPhoneNumber ? 'Update number' : 'Save number'}</button>
+          <div class="phone-number-result" data-id="${client.id}" style="margin-top:8px; display:none;"></div>
+        `;
+      }
+
       billingHtml = `
         <div class="billing-box billing-paid">
           <div>💳 Paid — ${planLabel}</div>
@@ -98,13 +119,20 @@ async function loadClients() {
             <button class="btn btn-secondary conversations-btn" data-id="${client.id}">View conversations</button>
             <div class="conversations-box" data-id="${client.id}" style="margin-top:10px; display:none;"></div>
           </div>
+          <div style="margin-top:16px; padding-top:14px; border-top:1px solid #bfdbfe;">
+            <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">Live phone agent</div>
+            ${phoneHtml}
+          </div>
         </div>
       `;
     } else if (client.status === 'cancelled') {
+      const retellReminder = client.retellAgentId
+        ? `<div style="font-size:12.5px; margin-bottom:10px;">Retell agent ID <code style="font-size:11px;">${client.retellAgentId}</code>${client.retellPhoneNumber ? ` (number: ${escapeAttr(client.retellPhoneNumber)})` : ''} — pause or remove it in Retell's own dashboard so the number stops answering as this client.</div>`
+        : `<div style="font-size:12.5px; margin-bottom:10px;">This client's AI agent should be considered off until they resubscribe. If they're connected to a real phone number, pause or remove that agent in Retell too.</div>`;
       billingHtml = `
         <div class="billing-box billing-cancelled">
           <div style="font-weight:600; margin-bottom:8px;">⚠️ Subscription cancelled${client.cancelledAt ? ' — ' + new Date(client.cancelledAt).toLocaleDateString() : ''}</div>
-          <div style="font-size:12.5px; margin-bottom:10px;">This client's AI agent should be considered off until they resubscribe. If they're connected to a real phone number, pause or remove that agent in Retell too.</div>
+          ${retellReminder}
           ${paymentLinkButtons}
         </div>
       `;
@@ -395,6 +423,58 @@ async function loadClients() {
         }
       } catch (err) {
         resultBox.innerHTML = `<span style="color:#b91c1c;">Something went wrong generating the link.</span>`;
+      }
+    });
+  });
+
+  document.querySelectorAll('.create-phone-agent-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const resultBox = document.querySelector(`.phone-agent-result[data-id="${id}"]`);
+      resultBox.style.display = 'block';
+      resultBox.textContent = 'Creating phone agent... this calls Retell AI, may take a few seconds.';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`/api/clients/${id}/create-phone-agent`, { method: 'POST' });
+        const data = await res.json();
+
+        if (data.demoMode) {
+          resultBox.innerHTML = `<span style="color:#9a3412;">${data.message}</span>`;
+          btn.disabled = false;
+        } else if (data.agentId) {
+          loadClients();
+        } else {
+          resultBox.innerHTML = `<span style="color:#b91c1c;">${data.error || 'Something went wrong creating the phone agent.'}</span>`;
+          btn.disabled = false;
+        }
+      } catch (err) {
+        resultBox.innerHTML = `<span style="color:#b91c1c;">Something went wrong creating the phone agent.</span>`;
+        btn.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll('.save-phone-number-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const input = document.querySelector(`.phone-number-input[data-id="${id}"]`);
+      const resultBox = document.querySelector(`.phone-number-result[data-id="${id}"]`);
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      try {
+        await fetch(`/api/clients/${id}/phone-number`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ phoneNumber: input.value.trim() })
+        });
+        loadClients();
+      } catch (err) {
+        resultBox.style.display = 'block';
+        resultBox.innerHTML = `<span style="color:#b91c1c;">Something went wrong saving the number.</span>`;
+        btn.disabled = false;
+        btn.textContent = 'Save number';
       }
     });
   });
