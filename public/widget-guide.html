@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Add Your Chat Widget To Your Website — Dispatch AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .platform-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 24px 0; }
+  .platform-tab {
+    padding: 10px 18px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--paper); color: var(--ink); font-size: 14px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+  }
+  .platform-tab.active { background: var(--ink); color: white; border-color: var(--ink); }
+  .platform-panel { display: none; }
+  .platform-panel.active { display: block; }
+  .guide-step {
+    display: flex; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--line);
+  }
+  .guide-step:last-child { border-bottom: none; }
+  .guide-step-num {
+    flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent-dark); font-weight: 700;
+    font-size: 13.5px; display: flex; align-items: center; justify-content: center;
+  }
+  .guide-step-body p { margin: 0; font-size: 14.5px; color: var(--ink-soft); }
+  .guide-step-body strong { color: var(--ink); }
+  .note-box {
+    margin-top: 18px; padding: 14px 16px; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--line);
+    font-size: 13.5px; color: var(--ink-soft);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="logo" href="/">Dispatch<span>AI</span></a>
+    <nav>
+      <a href="/dashboard">Dashboard</a>
+    </nav>
+  </header>
+
+  <section style="padding: 40px 0; max-width: 720px;">
+    <h1 style="font-size:28px;">Add your chat widget to your website</h1>
+    <p style="color:var(--ink-soft); font-size:15.5px;">
+      You already have your widget code — you copied it from the "Website chat widget code" box on your dashboard.
+      It's one line and looks something like <code style="font-size:12.5px;">&lt;script src="..." data-client-id="..."&gt;&lt;/script&gt;</code>.
+      Pick whichever platform your website is built on below, and follow the steps. If you're not sure what your
+      website is built on, that's okay — whoever set it up for you will know, or you can send them the "Other /
+      I'm not sure" instructions and they'll take it from there.
+    </p>
+
+    <div class="note-box">
+      <strong style="color:var(--ink);">Don't have your code yet?</strong> Go to your <a href="/dashboard">dashboard</a>,
+      find your business's card, and look for the "Website chat widget code" box — it only appears once you're on a
+      paid plan. Copy the whole line, then come back here.
+    </div>
+
+    <div class="platform-tabs" id="platformTabs">
+      <button class="platform-tab active" data-target="wordpress">WordPress</button>
+      <button class="platform-tab" data-target="wix">Wix</button>
+      <button class="platform-tab" data-target="squarespace">Squarespace</button>
+      <button class="platform-tab" data-target="other">Other / I'm not sure</button>
+    </div>
+
+    <!-- WordPress -->
+    <div class="platform-panel active" id="panel-wordpress">
+      <h2 style="font-size:19px;">WordPress</h2>
+      <div class="guide-step">
+        <div class="guide-step-num">1</div>
+        <div class="guide-step-body"><p>Log into your WordPress admin area — usually <strong>yourwebsite.com/wp-admin</strong>.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">2</div>
+        <div class="guide-step-body"><p>On the left menu, go to <strong>Plugins → Add New</strong>. Search for a free plugin called <strong>"WPCode"</strong> (or <strong>"Insert Headers and Footers"</strong> if WPCode isn't available). Click <strong>Install Now</strong>, then <strong>Activate</strong>.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">3</div>
+        <div class="guide-step-body"><p>A new menu item will appear — look for <strong>Code Snippets → Header & Footer</strong> (naming varies slightly by plugin, but it will mention "header" and "footer").</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">4</div>
+        <div class="guide-step-body"><p>Paste your widget code into the <strong>"Footer"</strong> box (not the header box).</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">5</div>
+        <div class="guide-step-body"><p>Click <strong>Save</strong> or <strong>Update</strong>.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">6</div>
+        <div class="guide-step-body"><p>Open your live website in a new tab. You should see a <strong>"Chat with us"</strong> bubble in the bottom corner. Done!</p></div>
+      </div>
+    </div>
+
+    <!-- Wix -->
+    <div class="platform-panel" id="panel-wix">
+      <h2 style="font-size:19px;">Wix</h2>
+      <div class="guide-step">
+        <div class="guide-step-num">1</div>
+        <div class="guide-step-body"><p>Log into Wix and open the <strong>Editor</strong> for your site.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">2</div>
+        <div class="guide-step-body"><p>Go to <strong>Settings</strong>, then find <strong>"Custom Code"</strong> (you can also type "custom code" into the settings search box).</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">3</div>
+        <div class="guide-step-body"><p>Click <strong>"+ Add Custom Code"</strong> and paste your widget code into the box.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">4</div>
+        <div class="guide-step-body"><p>Set it to load on <strong>"All Pages"</strong>, and set the placement to <strong>"Body - end"</strong>.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">5</div>
+        <div class="guide-step-body"><p>Click <strong>Apply</strong>, then click <strong>Publish</strong> in the top right so the change goes live.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">6</div>
+        <div class="guide-step-body"><p>Open your live website. You should see a <strong>"Chat with us"</strong> bubble in the bottom corner. Done!</p></div>
+      </div>
+    </div>
+
+    <!-- Squarespace -->
+    <div class="platform-panel" id="panel-squarespace">
+      <h2 style="font-size:19px;">Squarespace</h2>
+      <div class="guide-step">
+        <div class="guide-step-num">1</div>
+        <div class="guide-step-body"><p>Log into Squarespace and open your site.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">2</div>
+        <div class="guide-step-body"><p>Go to <strong>Settings → Advanced → Code Injection</strong>.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">3</div>
+        <div class="guide-step-body"><p>Paste your widget code into the <strong>"Footer"</strong> box.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">4</div>
+        <div class="guide-step-body"><p>Click <strong>Save</strong>.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">5</div>
+        <div class="guide-step-body"><p>Open your live website. You should see a <strong>"Chat with us"</strong> bubble in the bottom corner. Done!</p></div>
+      </div>
+      <div class="note-box">Code Injection is only available on Squarespace's Business plan or higher. If you don't see that option, your current plan may not support it — Squarespace support can confirm.</div>
+    </div>
+
+    <!-- Other -->
+    <div class="platform-panel" id="panel-other">
+      <h2 style="font-size:19px;">Other website, or not sure what it's built on</h2>
+      <div class="guide-step">
+        <div class="guide-step-num">1</div>
+        <div class="guide-step-body"><p>Copy your widget code from your <a href="/dashboard">dashboard</a>.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">2</div>
+        <div class="guide-step-body"><p>Send it to whoever built or manages your website, along with this instruction: <strong>"Please paste this code just before the closing <code>&lt;/body&gt;</code> tag, on every page of the site."</strong></p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">3</div>
+        <div class="guide-step-body"><p>Most website builders also have a section for this that a developer will recognize immediately — often called <strong>"Custom code," "Tracking code," "Footer scripts,"</strong> or similar. For example, Shopify calls it "Edit code," and Webflow calls it "Custom Code" under Project Settings.</p></div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-num">4</div>
+        <div class="guide-step-body"><p>Once it's added, a <strong>"Chat with us"</strong> bubble should appear in the bottom corner of the live site. No other setup is needed on our end.</p></div>
+      </div>
+    </div>
+
+    <div class="note-box" style="margin-top:28px;">
+      <strong style="color:var(--ink);">Not seeing the chat bubble?</strong> Try a hard refresh of the page (hold Shift and click reload, or clear your browser cache). Make sure you copied the entire code snippet, starting with <code style="font-size:12px;">&lt;script</code> and ending with <code style="font-size:12px;">&lt;/script&gt;</code>. The widget also only works while your subscription is active on a paid plan — if you recently cancelled, that's expected. Still stuck? Reply to any email from us and we'll help directly.
+    </div>
+  </section>
+
+  <footer>Dispatch AI — MVP prototype.</footer>
+</div>
+
+<script>
+document.querySelectorAll('.platform-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.platform-tab').forEach((t) => t.classList.remove('active'));
+    document.querySelectorAll('.platform-panel').forEach((p) => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.target).classList.add('active');
+  });
+});
+</script>
+</body>
+</html>
