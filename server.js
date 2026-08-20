@@ -21,6 +21,7 @@ const { buildFollowUpDraftPrompt, parseFollowUpDraft } = require('./lib/followUp
 const { buildScriptSafetyCheckPrompt, parseScriptSafetyCheck } = require('./lib/scriptSafetyCheckPrompt');
 const { sendEmail } = require('./lib/emailClient');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession } = require('./lib/stripeClient');
+const { createPhoneAgent } = require('./lib/retellClient');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -521,6 +522,59 @@ const server = http.createServer(async (req, res) => {
         returnUrl: `${baseUrl}/dashboard`,
       });
       return sendJson(res, 200, result);
+    }
+
+    // Pushes a paying client's approved script into Retell AI as a real,
+    // callable phone agent. Gated on status === 'paid' specifically (not
+    // just "approved") -- a live phone number costs real money via
+    // Retell/Twilio, so this shouldn't be created before someone has
+    // actually subscribed, same reasoning as the website widget's gating.
+    // Idempotent: if this client already has a Retell agent, just return
+    // it instead of creating a duplicate on a second click.
+    const clientPhoneAgentMatch = pathname.match(/^\/api\/clients\/([^/]+)\/create-phone-agent$/);
+    if (clientPhoneAgentMatch && req.method === 'POST') {
+      const clientRecord = db.getClient(clientPhoneAgentMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+      if (clientRecord.status !== 'paid') {
+        return sendJson(res, 400, { error: 'This client needs to be on a paid plan before creating a live phone agent.' });
+      }
+      if (clientRecord.retellAgentId) {
+        return sendJson(res, 200, {
+          demoMode: false,
+          llmId: clientRecord.retellLlmId,
+          agentId: clientRecord.retellAgentId,
+        });
+      }
+
+      const result = await createPhoneAgent({
+        companyName: clientRecord.intake?.companyName,
+        script: clientRecord.script,
+      });
+
+      if (!result.demoMode) {
+        db.updateClient(clientRecord.id, {
+          retellLlmId: result.llmId,
+          retellAgentId: result.agentId,
+          retellAgentCreatedAt: new Date().toISOString(),
+        });
+      }
+
+      return sendJson(res, 200, result);
+    }
+
+    // Lets the founder record the phone number once they've bought/imported
+    // it and assigned it to the agent above -- entirely inside Retell's own
+    // dashboard, no API call needed here. This just keeps it visible on this
+    // client's card so it's easy to find later and hand to the client.
+    const clientPhoneNumberMatch = pathname.match(/^\/api\/clients\/([^/]+)\/phone-number$/);
+    if (clientPhoneNumberMatch && req.method === 'POST') {
+      const { phoneNumber } = await readBody(req);
+      const updated = db.updateClient(clientPhoneNumberMatch[1], {
+        retellPhoneNumber: phoneNumber || null,
+        retellPhoneNumberSavedAt: new Date().toISOString(),
+      });
+      if (!updated) return sendJson(res, 404, { error: 'not found' });
+      return sendJson(res, 200, updated);
     }
 
     // Every website-widget conversation a paying client has had, tagged with
