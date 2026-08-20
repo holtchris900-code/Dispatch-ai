@@ -108,13 +108,42 @@ async function loadClients() {
         </div>
       `;
     } else if (client.status === 'approved') {
-      billingHtml = `
-        <div class="billing-box">
-          <div style="font-size:13px; font-weight:600; margin-bottom:8px;">Send a payment link to go live</div>
-          ${paymentLinkButtons}
-        </div>
-      `;
+      if (client.reviewMode === 'auto' && client.customerEmailSentAt) {
+        billingHtml = `
+          <div class="billing-box">
+            <div style="font-size:13px; font-weight:600; margin-bottom:6px;">🤖 Auto-approved -- passed the automatic safety check</div>
+            <div style="font-size:12.5px; color:#4b5563; margin-bottom:10px;">Payment link emailed to ${client.intake?.contactEmail || 'the customer'} on ${new Date(client.customerEmailSentAt).toLocaleString()}. No action needed unless you want to send it again.</div>
+            ${paymentLinkButtons}
+          </div>
+        `;
+      } else if (client.reviewMode === 'auto') {
+        billingHtml = `
+          <div class="billing-box">
+            <div style="font-size:13px; font-weight:600; margin-bottom:6px;">🤖 Auto-approved, but no payment link could be emailed automatically</div>
+            <div style="font-size:12.5px; color:#4b5563; margin-bottom:10px;">This script passed the automatic safety check, but Stripe or Resend isn't fully configured yet, so nothing was sent. Send a link manually below once that's set up.</div>
+            ${paymentLinkButtons}
+          </div>
+        `;
+      } else {
+        billingHtml = `
+          <div class="billing-box">
+            <div style="font-size:13px; font-weight:600; margin-bottom:8px;">Send a payment link to go live</div>
+            ${paymentLinkButtons}
+          </div>
+        `;
+      }
     }
+
+    // Shown whenever there's a leftover reviewReason, regardless of the
+    // client's exact status -- covers both the normal case (still in
+    // "draft", never auto-approved) and a rarer edge case (already
+    // auto-approved, but something failed afterwards, like the
+    // confirmation email not sending) where it still deserves a look.
+    const reviewBanner = client.reviewReason
+      ? `<div style="margin-top:10px; padding:12px 14px; background:#fef3c7; border:1px solid #fde68a; border-radius:10px; font-size:13px; color:#78350f;">
+          <strong>⚠️ Needs your review:</strong> ${client.reviewReason}
+        </div>`
+      : '';
 
     card.innerHTML = `
       <div class="top-row">
@@ -122,8 +151,9 @@ async function loadClients() {
         <span class="status-pill ${statusClass}">${client.status}</span>
       </div>
       <div style="font-size:13px; color:#6b7280; margin-top:4px;">
-        ${client.intake?.trades || ''} · ${client.intake?.serviceArea || ''}
+        ${client.intake?.trades || ''} · ${client.intake?.serviceArea || ''}${client.intake?.contactEmail ? ' · ' + client.intake.contactEmail : ''}
       </div>
+      ${reviewBanner}
       <textarea class="script-box" data-id="${client.id}">${client.script || ''}</textarea>
       <div style="margin-top:10px; display:flex; gap:10px;">
         <button class="btn btn-secondary save-btn" data-id="${client.id}">Save edits</button>
