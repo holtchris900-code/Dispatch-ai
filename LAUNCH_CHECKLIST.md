@@ -1,6 +1,6 @@
 # Launch Checklist — From This Code to a Live Website
 
-Written for a non-technical founder. No command-line skills required except one optional step near the end (flagged clearly below), which you can hand to a freelance developer for a quick, cheap task if you'd rather not do it yourself.
+Written for a non-technical founder. No command-line skills required anywhere in this checklist.
 
 ## Step 1 — Get your AI API key
 
@@ -22,7 +22,7 @@ Buy a domain (e.g., `dispatchai.com`) from a registrar like Namecheap or Google 
 
 ## Step 5 — Connect a real phone number (when you're ready to take real calls)
 
-This is the one step that genuinely benefits from a technical person, but it's small — maybe 30 minutes for a freelance developer, or doable yourself if you're comfortable following instructions closely. Sign up at retellai.com and add a payment method. Get your Retell API key from their dashboard and add it to Render's environment variables as `RETELL_API_KEY`. Once you've approved a client's script in your dashboard, someone runs one command (`node scripts/create-retell-agent.js <clientId>`) to push that script into Retell as a real voice agent. Then, entirely inside Retell's own dashboard (no code), you buy or import a phone number and assign it to that new agent. Call the number yourself first to make sure it sounds right before handing it to a real client.
+Sign up at retellai.com and add a payment method. Get your Retell API key from their dashboard and add it to Render's environment variables as `RETELL_API_KEY`. Once a client is on a paid plan, their dashboard card gets a "Create phone agent" button — click it and it pushes their approved script into Retell as a real voice agent, no command line needed. Then, entirely inside Retell's own dashboard (no code), you buy or import a phone number and assign it to that new agent using the agent ID shown on their card. Call the number yourself first to make sure it sounds right, then paste the number into the box on their dashboard card so it's saved for reference before handing it to the client.
 
 ## Step 6 — Set up real Stripe payments
 
@@ -55,9 +55,20 @@ Finally, add one more environment variable so the app actually uses that disk:
 
 Save it, let the service redeploy, and client data will survive from then on — restarts, redeploys, and idle periods included. You can confirm it worked by checking Render's logs after the redeploy: the old warning about `DATA_DIR` not being set should be gone.
 
+## Step 9 — Connect a real email service (so follow-ups can actually send)
+
+The dashboard can now send a real email to a website visitor who chatted but didn't book -- but only once this is set up. Without it, clicking "Send now" on a follow-up draft shows a demo-mode message instead of sending anything.
+
+This uses **Resend** (resend.com), chosen because it has a genuinely free tier (3,000 emails/month) and one of the simplest setups of any email service. Sending real emails to real visitors requires owning a domain (not just your Render web address) -- if you don't have one yet, that's covered in Step 4 above; it's no longer purely optional once you want this feature working.
+
+Create a free account at resend.com. Inside it, add and verify the domain you own -- Resend gives you a small number of DNS records (usually 2-3) to add wherever you manage that domain's DNS (the same place you'd go for Step 4's custom domain setup). Verification can take anywhere from a few minutes to a few hours depending on the registrar. Once verified, create an API key from **API Keys** in Resend's dashboard, and add it to Render as `RESEND_API_KEY`.
+
+Then add one more environment variable in Render: `FOLLOWUP_FROM_EMAIL`, set to an address on your newly verified domain (e.g. `hello@yourdomain.com` -- it doesn't need to be a real working inbox, just a valid address on that domain). Optionally, add `FOLLOWUP_REPLY_TO` set to your own real email address, so that if a lead replies to a follow-up, it lands in your inbox instead of nowhere -- you can then forward it to the client by hand.
+
+We'll walk through the Resend signup and domain verification together step by step, with screenshots, whenever you're ready to do this one live -- it's the same pattern as the Stripe and Render setup earlier.
+
 ## Before you send this to a single real customer
 
 A couple of things still worth double-checking: make sure you've actually completed Step 7 above (the dashboard ships with a fallback password specifically so it isn't wide open, but that fallback is not something to leave in place), and Step 8 (without it, real customer data can silently disappear). Review the AI-disclosure and outbound-calling compliance notes from the earlier planning document with a real look at your state's specific rules before making any outbound calls. Once Step 8 is done, client data survives restarts and redeploys, but it's still a single JSON file rather than a real database — fine through your first several dozen clients, but worth moving to a proper database once you're relying on this daily with real customers and want protection against two edits happening at the exact same instant.
 
 None of this needs to happen before your first test client — it needs to happen before you're handling real customer phone numbers, addresses, and payment information at any real volume.
-
