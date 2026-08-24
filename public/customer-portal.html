@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Past Customers — Dispatch AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="logo">Dispatch<span>AI</span></span>
+  </header>
+
+  <section style="padding: 40px 0; max-width: 720px;">
+    <div id="loadingState">
+      <p style="color:var(--ink-soft);">Loading...</p>
+    </div>
+
+    <div id="invalidState" style="display:none;">
+      <h1 style="font-size:24px;">Link not found</h1>
+      <p style="color:var(--ink-soft);">This link doesn't look right, or it may have been replaced with a newer one. Ask whoever sent it to you for the latest link.</p>
+    </div>
+
+    <div id="mainState" style="display:none;">
+      <h1 style="font-size:26px;" id="pageTitle">Your past customers</h1>
+      <p style="color:var(--ink-soft); font-size:15px;">
+        Upload a list of your past customers and this page will watch for anyone who's due for a reminder about their next
+        service -- and draft a short, friendly message for you to look over before it goes anywhere. Nothing is ever sent
+        without you approving it first.
+      </p>
+
+      <div style="margin-top:24px; padding:20px; border:1px solid var(--line); border-radius:var(--radius-md); background:var(--surface);">
+        <div style="font-weight:700; font-size:15px; margin-bottom:6px;">Add customers</div>
+        <p style="font-size:13.5px; color:var(--ink-soft); margin:0 0 10px;">
+          Upload a CSV (a spreadsheet saved as "CSV" from Excel, Google Sheets, or Numbers) with these columns:
+          <code style="font-size:12px;">name, email, phone, serviceType, lastServiceDate, remindAfterMonths</code>.
+          Only <code style="font-size:12px;">name</code> is required, but without an <code style="font-size:12px;">email</code>
+          we won't be able to send anything to that person. <code style="font-size:12px;">lastServiceDate</code> should look
+          like <code style="font-size:12px;">2025-04-15</code>. <code style="font-size:12px;">remindAfterMonths</code> is
+          optional -- how many months after their last service to check back in; if left blank we'll use 6 months.
+        </p>
+        <p style="font-size:13px; margin:0 0 14px;">
+          <a href="data:text/csv;charset=utf-8,name%2Cemail%2Cphone%2CserviceType%2ClastServiceDate%2CremindAfterMonths%0AJane%20Smith%2Cjane%40example.com%2C555-123-4567%2CAC%20tune-up%2C2025-04-15%2C6%0A" download="past-customers-template.csv" style="color:var(--accent); font-weight:600;">Download a template CSV →</a>
+        </p>
+        <input type="file" id="csvFile" accept=".csv,text/csv" style="margin-bottom:10px; display:block;" />
+        <button class="btn btn-primary" id="uploadBtn">Upload</button>
+        <div id="uploadResult" style="margin-top:10px; font-size:13.5px; display:none;"></div>
+      </div>
+
+      <div style="margin-top:28px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h2 style="font-size:19px; margin:0;">Your customers</h2>
+          <button class="btn btn-secondary" id="refreshBtn" style="font-size:12.5px; padding:8px 14px;">Refresh</button>
+        </div>
+        <div id="customerList" style="margin-top:14px;"></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>Dispatch AI — MVP prototype.</footer>
+</div>
+
+<script>
+const token = new URLSearchParams(window.location.search).get('token');
+const loadingState = document.getElementById('loadingState');
+const invalidState = document.getElementById('invalidState');
+const mainState = document.getElementById('mainState');
+const customerList = document.getElementById('customerList');
+
+const STATUS_LABELS = {
+  none: '⏳ Not due yet',
+  no_email: '⚠️ No email on file -- can\'t send',
+  drafted: '📝 Draft ready for your review',
+  approved: '✅ Approved -- ready to send',
+  sent: '✔️ Sent',
+};
+
+function escapeAttr(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+async function loadCustomers() {
+  if (!token) {
+    loadingState.style.display = 'none';
+    invalidState.style.display = 'block';
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/customer-portal/${token}/customers`);
+    if (!res.ok) {
+      loadingState.style.display = 'none';
+      invalidState.style.display = 'block';
+      return;
+    }
+    const data = await res.json();
+
+    loadingState.style.display = 'none';
+    mainState.style.display = 'block';
+    document.getElementById('pageTitle').textContent = data.companyName ? `${data.companyName}'s past customers` : 'Your past customers';
+
+    renderCustomers(data.pastCustomers || []);
+  } catch (err) {
+    loadingState.style.display = 'none';
+    invalidState.style.display = 'block';
+  }
+}
+
+function renderCustomers(customers) {
+  if (customers.length === 0) {
+    customerList.innerHTML = '<p style="color:var(--ink-faint); font-size:14px;">No customers uploaded yet -- add some above.</p>';
+    return;
+  }
+
+  customerList.innerHTML = customers.map((c) => {
+    const statusLabel = STATUS_LABELS[c.outreachStatus] || c.outreachStatus;
+    const meta = [c.serviceType, c.lastServiceDate, c.email].filter(Boolean).map(escapeAttr).join(' · ');
+
+    let actionHtml = '';
+    if (c.outreachStatus === 'drafted' || c.outreachStatus === 'approved') {
+      const isApproved = c.outreachStatus === 'approved';
+      actionHtml = `
+        <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--line);">
+          <input type="text" class="outreach-subject" data-id="${c.id}" value="${escapeAttr(c.outreachSubject || '')}" placeholder="Subject" style="width:100%; padding:8px; border-radius:6px; border:1px solid var(--line); font-size:13px; margin-bottom:6px;" />
+          <textarea class="outreach-body" data-id="${c.id}" style="width:100%; padding:8px; border-radius:6px; border:1px solid var(--line); font-size:13px; min-height:80px;">${escapeAttr(c.outreachBody || '')}</textarea>
+          <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-secondary save-btn" data-id="${c.id}">Save edits</button>
+            <button class="btn btn-primary approve-btn" data-id="${c.id}" ${isApproved ? 'disabled' : ''}>${isApproved ? 'Approved ✓' : 'Approve'}</button>
+            <button class="btn btn-primary send-btn" data-id="${c.id}" ${isApproved ? '' : 'disabled'}>Send now</button>
+          </div>
+          <div class="send-result" data-id="${c.id}" style="margin-top:6px; font-size:12.5px;"></div>
+        </div>
+      `;
+    } else if (c.outreachStatus === 'sent') {
+      actionHtml = `
+        <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); font-size:13px; color:var(--ink-soft);">
+          "${escapeAttr(c.outreachSubject || '')}" -- sent ${c.outreachSentAt ? new Date(c.outreachSentAt).toLocaleString() : ''}
+        </div>
+      `;
+    }
+
+    return `
+      <div style="border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:10px; background:var(--paper);">
+        <div style="display:flex; justify-content:space-between; gap:10px; align-items:baseline;">
+          <strong style="font-size:14.5px;">${escapeAttr(c.name || '(unnamed)')}</strong>
+          <span style="font-size:12px; color:var(--ink-soft);">${statusLabel}</span>
+        </div>
+        ${meta ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:4px;">${meta}</div>` : ''}
+        ${actionHtml}
+      </div>
+    `;
+  }).join('');
+
+  customerList.querySelectorAll('.save-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const subject = customerList.querySelector(`.outreach-subject[data-id="${id}"]`).value;
+      const body = customerList.querySelector(`.outreach-body[data-id="${id}"]`).value;
+      btn.textContent = 'Saving...';
+      await fetch(`/api/customer-portal/${token}/customers/${id}/outreach`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ subject, body }),
+      });
+      btn.textContent = 'Save edits';
+    });
+  });
+
+  customerList.querySelectorAll('.approve-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      await fetch(`/api/customer-portal/${token}/customers/${id}/outreach/approve`, { method: 'POST' });
+      loadCustomers();
+    });
+  });
+
+  customerList.querySelectorAll('.send-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const resultBox = customerList.querySelector(`.send-result[data-id="${id}"]`);
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      try {
+        const res = await fetch(`/api/customer-portal/${token}/customers/${id}/outreach/send`, { method: 'POST' });
+        const data = await res.json();
+
+        if (data.demoMode) {
+          resultBox.style.display = 'block';
+          resultBox.innerHTML = `<span style="color:#9a3412;">${data.message}</span>`;
+          btn.disabled = false;
+          btn.textContent = 'Send now';
+        } else if (data.error) {
+          resultBox.style.display = 'block';
+          resultBox.innerHTML = `<span style="color:#b91c1c;">${data.error}</span>`;
+          btn.disabled = false;
+          btn.textContent = 'Send now';
+        } else {
+          loadCustomers();
+        }
+      } catch (err) {
+        resultBox.style.display = 'block';
+        resultBox.innerHTML = `<span style="color:#b91c1c;">Something went wrong sending this.</span>`;
+        btn.disabled = false;
+        btn.textContent = 'Send now';
+      }
+    });
+  });
+}
+
+document.getElementById('refreshBtn').addEventListener('click', loadCustomers);
+
+document.getElementById('uploadBtn').addEventListener('click', async () => {
+  const fileInput = document.getElementById('csvFile');
+  const resultBox = document.getElementById('uploadResult');
+  const file = fileInput.files[0];
+  if (!file) {
+    resultBox.style.display = 'block';
+    resultBox.innerHTML = '<span style="color:#b91c1c;">Choose a CSV file first.</span>';
+    return;
+  }
+
+  const uploadBtn = document.getElementById('uploadBtn');
+  uploadBtn.disabled = true;
+  uploadBtn.textContent = 'Uploading...';
+
+  try {
+    const csvText = await file.text();
+    const res = await fetch(`/api/customer-portal/${token}/upload`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ csvText }),
+    });
+    const data = await res.json();
+
+    resultBox.style.display = 'block';
+    if (data.error) {
+      resultBox.innerHTML = `<span style="color:#b91c1c;">${data.error}</span>`;
+    } else {
+      resultBox.innerHTML = `<span style="color:#166534;">Added ${data.added} customer${data.added === 1 ? '' : 's'}${data.skipped ? ` (skipped ${data.skipped} row${data.skipped === 1 ? '' : 's'} with no name)` : ''}.</span>`;
+      fileInput.value = '';
+      loadCustomers();
+    }
+  } catch (err) {
+    resultBox.style.display = 'block';
+    resultBox.innerHTML = '<span style="color:#b91c1c;">Something went wrong reading that file.</span>';
+  } finally {
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = 'Upload';
+  }
+});
+
+loadCustomers();
+</script>
+</body>
+</html>
