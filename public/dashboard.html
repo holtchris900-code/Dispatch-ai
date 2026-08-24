@@ -123,6 +123,14 @@ async function loadClients() {
             <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">Live phone agent</div>
             ${phoneHtml}
           </div>
+          <div style="margin-top:16px; padding-top:14px; border-top:1px solid #bfdbfe;">
+            <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">Past customers &amp; repeat-work outreach</div>
+            <div style="font-size:12px; color:#1e40af; margin-bottom:8px;">Send this client their own private link -- they upload their past customer list there, and review/approve/send reminders themselves once someone's due for their next service.</div>
+            <button class="btn btn-secondary get-customer-link-btn" data-id="${client.id}">Get customer upload link</button>
+            <div class="customer-link-result" data-id="${client.id}" style="margin-top:10px; display:none;"></div>
+            <button class="btn btn-secondary view-past-customers-btn" data-id="${client.id}" style="margin-top:8px;">View past-customer outreach</button>
+            <div class="past-customers-box" data-id="${client.id}" style="margin-top:10px; display:none;"></div>
+          </div>
         </div>
       `;
     } else if (client.status === 'cancelled') {
@@ -475,6 +483,79 @@ async function loadClients() {
         resultBox.innerHTML = `<span style="color:#b91c1c;">Something went wrong saving the number.</span>`;
         btn.disabled = false;
         btn.textContent = 'Save number';
+      }
+    });
+  });
+
+  const OUTREACH_STATUS_LABELS = {
+    none: '⏳ Not due yet',
+    no_email: '⚠️ No email on file',
+    drafted: '📝 Client is reviewing a draft',
+    approved: '✅ Approved by client, not sent yet',
+    sent: '✔️ Sent',
+  };
+
+  document.querySelectorAll('.get-customer-link-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const resultBox = document.querySelector(`.customer-link-result[data-id="${id}"]`);
+      resultBox.style.display = 'block';
+      resultBox.textContent = 'Generating link...';
+
+      try {
+        const res = await fetch(`/api/clients/${id}/customer-portal-link`, { method: 'POST' });
+        const data = await res.json();
+        if (data.url) {
+          resultBox.innerHTML = `
+            <div style="font-size:12.5px; margin-bottom:4px;">Send this link to the client:</div>
+            <input type="text" readonly value="${data.url}" style="width:100%; padding:8px; border-radius:6px; border:1px solid #bfdbfe; font-size:12.5px;" onclick="this.select()" />
+          `;
+        } else {
+          resultBox.innerHTML = `<span style="color:#b91c1c;">Something went wrong generating the link.</span>`;
+        }
+      } catch (err) {
+        resultBox.innerHTML = `<span style="color:#b91c1c;">Something went wrong generating the link.</span>`;
+      }
+    });
+  });
+
+  document.querySelectorAll('.view-past-customers-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const box = document.querySelector(`.past-customers-box[data-id="${id}"]`);
+
+      if (box.style.display === 'block') {
+        box.style.display = 'none';
+        return;
+      }
+
+      box.style.display = 'block';
+      box.innerHTML = '<div style="font-size:12.5px; color:#6b7280;">Loading...</div>';
+
+      try {
+        const res = await fetch(`/api/clients/${id}/past-customers`);
+        const pastCustomers = await res.json();
+
+        if (!Array.isArray(pastCustomers) || pastCustomers.length === 0) {
+          box.innerHTML = '<div style="font-size:12.5px; color:#9ca3af;">This client hasn\'t uploaded any past customers yet.</div>';
+          return;
+        }
+
+        box.innerHTML = pastCustomers.map((c) => {
+          const statusLabel = OUTREACH_STATUS_LABELS[c.outreachStatus] || c.outreachStatus;
+          const meta = [c.serviceType, c.lastServiceDate, c.email].filter(Boolean).map(escapeAttr).join(' · ');
+          return `
+            <div style="border:1px solid #e5e7eb; border-radius:10px; padding:10px; margin-bottom:8px; background:#fff;">
+              <div style="display:flex; justify-content:space-between; gap:10px; font-size:12.5px;">
+                <strong>${escapeAttr(c.name || '(unnamed)')}</strong>
+                <span style="color:#6b7280;">${statusLabel}</span>
+              </div>
+              ${meta ? `<div style="font-size:12px; color:#6b7280; margin-top:4px;">${meta}</div>` : ''}
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        box.innerHTML = '<div style="font-size:12.5px; color:#b91c1c;">Something went wrong loading this client\'s past customers.</div>';
       }
     });
   });
