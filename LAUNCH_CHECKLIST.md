@@ -57,7 +57,7 @@ Save it, let the service redeploy, and client data will survive from then on —
 
 ## Step 9 — Connect a real email service (so follow-ups can actually send)
 
-The dashboard can now send a real email to a website visitor who chatted but didn't book -- but only once this is set up. Without it, clicking "Send now" on a follow-up draft shows a demo-mode message instead of sending anything.
+The dashboard can now send a real email to a website visitor who chatted but didn't book -- but only once this is set up. Without it, clicking "Send now" on a follow-up draft shows a demo-mode message instead of sending anything. This same setup also powers past-customer outreach (the "Send now" button on a client's own private customer-upload page) -- no separate setup needed for that one, it reuses everything below.
 
 This uses **Resend** (resend.com), chosen because it has a genuinely free tier (3,000 emails/month) and one of the simplest setups of any email service. Sending real emails to real visitors requires owning a domain (not just your Render web address) -- if you don't have one yet, that's covered in Step 4 above; it's no longer purely optional once you want this feature working.
 
