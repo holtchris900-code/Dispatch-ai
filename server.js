@@ -22,6 +22,8 @@ const { buildScriptSafetyCheckPrompt, parseScriptSafetyCheck } = require('./lib/
 const { sendEmail } = require('./lib/emailClient');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession } = require('./lib/stripeClient');
 const { createPhoneAgent } = require('./lib/retellClient');
+const { parseCsv } = require('./lib/csv');
+const { buildPastCustomerOutreachPrompt, parsePastCustomerOutreach, monthsSince } = require('./lib/pastCustomerOutreachPrompt');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -54,6 +56,55 @@ async function notifyFounder({ companyName, reason }) {
   } catch (err) {
     // Never let a notification failure affect the signup itself.
   }
+}
+
+// --- Past-customer outreach (repeat/seasonal work) --------------------------
+// Shared by both the founder's read-only dashboard view and the client's own
+// portal (see public/customer-portal.html): finds past customers who are
+// "due" for a reminder -- enough time has passed since their last service --
+// and haven't been drafted yet, and drafts an outreach message for each.
+// Computed on demand whenever either page is loaded, rather than on a
+// background timer -- the same simplest-thing-that-works approach already
+// used for classifying widget conversations.
+const DEFAULT_REMIND_AFTER_MONTHS = 6;
+
+function isPastCustomerDue(pc) {
+  if (!pc.lastServiceDate) return false;
+  const months = monthsSince(pc.lastServiceDate);
+  if (months === null) return false;
+  const threshold = Number(pc.remindAfterMonths) > 0 ? Number(pc.remindAfterMonths) : DEFAULT_REMIND_AFTER_MONTHS;
+  return months >= threshold;
+}
+
+async function draftDueOutreach(clientRecord, pastCustomers) {
+  for (const pc of pastCustomers) {
+    if (pc.outreachStatus !== 'none') continue;
+    if (!isPastCustomerDue(pc)) continue;
+
+    // Can't email a reminder with nowhere to send it -- mark it clearly
+    // rather than silently skipping forever, so it's visible on both the
+    // client's portal and the founder's dashboard that this row needs an
+    // email address added (via a fresh CSV upload) before it can go out.
+    if (!pc.email) {
+      const updated = db.updatePastCustomer(pc.id, { outreachStatus: 'no_email' });
+      Object.assign(pc, updated);
+      continue;
+    }
+
+    const { system, messages } = buildPastCustomerOutreachPrompt(clientRecord, pc);
+    const result = await callClaude({ system, messages, maxTokens: 300 });
+    if (result.demoMode) continue; // leave as 'none' -- no real ANTHROPIC_API_KEY to draft with yet
+
+    const draft = parsePastCustomerOutreach(result.text);
+    const updated = db.updatePastCustomer(pc.id, {
+      outreachSubject: draft.subject,
+      outreachBody: draft.body,
+      outreachStatus: draft.body ? 'drafted' : 'none',
+      outreachDraftedAt: new Date().toISOString(),
+    });
+    Object.assign(pc, updated);
+  }
+  return pastCustomers;
 }
 
 function sendJson(res, statusCode, data, extraHeaders = {}) {
@@ -451,6 +502,110 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, updated);
     }
 
+    // --- Past-customer portal (client-facing, no dashboard login) -----------
+    // Reached via a long, unguessable token instead of a password -- the
+    // same security model already used for the Stripe customer portal /
+    // success page (a long token stands in for a login). Deliberately public
+    // (not under isProtectedPath) so a client can use it without ever
+    // knowing your dashboard password.
+    const portalUploadMatch = pathname.match(/^\/api\/customer-portal\/([^/]+)\/upload$/);
+    if (portalUploadMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPastCustomerPortalToken(portalUploadMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+
+      const { csvText } = await readBody(req);
+      if (!csvText || !csvText.trim()) {
+        return sendJson(res, 400, { error: 'No CSV content received.' });
+      }
+
+      const rows = parseCsv(csvText);
+      const validRows = rows.filter((r) => r.name && r.name.trim());
+      const skipped = rows.length - validRows.length;
+
+      if (validRows.length === 0) {
+        return sendJson(res, 400, { error: 'No valid rows found -- make sure there is a "name" column with a value in every row.' });
+      }
+
+      const created = db.addPastCustomers(clientRecord.id, validRows);
+      return sendJson(res, 200, { added: created.length, skipped });
+    }
+
+    // Lists this client's past customers, drafting a reminder for anyone
+    // newly "due" along the way (see draftDueOutreach above).
+    const portalCustomersMatch = pathname.match(/^\/api\/customer-portal\/([^/]+)\/customers$/);
+    if (portalCustomersMatch && req.method === 'GET') {
+      const clientRecord = db.getClientByPastCustomerPortalToken(portalCustomersMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+
+      let pastCustomers = db.listPastCustomersForClient(clientRecord.id);
+      pastCustomers = await draftDueOutreach(clientRecord, pastCustomers);
+      return sendJson(res, 200, { companyName: clientRecord.intake?.companyName || '', pastCustomers });
+    }
+
+    // Lets the client edit an AI-drafted outreach message before it's ever
+    // used -- same "review before it goes out" pattern used everywhere else
+    // in this app.
+    const portalOutreachEditMatch = pathname.match(/^\/api\/customer-portal\/([^/]+)\/customers\/([^/]+)\/outreach$/);
+    if (portalOutreachEditMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPastCustomerPortalToken(portalOutreachEditMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+      const pc = db.getPastCustomer(portalOutreachEditMatch[2]);
+      if (!pc || pc.clientId !== clientRecord.id) return sendJson(res, 404, { error: 'not found' });
+
+      const { subject, body } = await readBody(req);
+      const updated = db.updatePastCustomer(pc.id, { outreachSubject: subject, outreachBody: body });
+      return sendJson(res, 200, updated);
+    }
+
+    const portalOutreachApproveMatch = pathname.match(/^\/api\/customer-portal\/([^/]+)\/customers\/([^/]+)\/outreach\/approve$/);
+    if (portalOutreachApproveMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPastCustomerPortalToken(portalOutreachApproveMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+      const pc = db.getPastCustomer(portalOutreachApproveMatch[2]);
+      if (!pc || pc.clientId !== clientRecord.id) return sendJson(res, 404, { error: 'not found' });
+
+      const updated = db.updatePastCustomer(pc.id, {
+        outreachStatus: 'approved',
+        outreachApprovedAt: new Date().toISOString(),
+      });
+      return sendJson(res, 200, updated);
+    }
+
+    // Actually sends the approved reminder, via the same Resend integration
+    // used for lead follow-ups. Deliberately a separate click from Approve.
+    const portalOutreachSendMatch = pathname.match(/^\/api\/customer-portal\/([^/]+)\/customers\/([^/]+)\/outreach\/send$/);
+    if (portalOutreachSendMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPastCustomerPortalToken(portalOutreachSendMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+      const pc = db.getPastCustomer(portalOutreachSendMatch[2]);
+      if (!pc || pc.clientId !== clientRecord.id) return sendJson(res, 404, { error: 'not found' });
+
+      if (pc.outreachStatus !== 'approved') {
+        return sendJson(res, 400, { error: 'Approve the draft before sending it.' });
+      }
+      if (!pc.email) {
+        return sendJson(res, 400, { error: 'No email address on file for this customer.' });
+      }
+
+      const companyName = clientRecord.intake?.companyName || 'the business';
+      const result = await sendEmail({
+        to: pc.email,
+        subject: pc.outreachSubject || 'Checking in',
+        text: pc.outreachBody || '',
+        fromName: companyName,
+      });
+
+      if (result.demoMode) {
+        return sendJson(res, 200, result);
+      }
+
+      const updated = db.updatePastCustomer(pc.id, {
+        outreachStatus: 'sent',
+        outreachSentAt: new Date().toISOString(),
+      });
+      return sendJson(res, 200, { ...result, pastCustomer: updated });
+    }
+
     // --- Dashboard data ------------------------------------------------------
     if (pathname === '/api/clients' && req.method === 'GET') {
       return sendJson(res, 200, db.listClients());
@@ -575,6 +730,40 @@ const server = http.createServer(async (req, res) => {
       });
       if (!updated) return sendJson(res, 404, { error: 'not found' });
       return sendJson(res, 200, updated);
+    }
+
+    // Generates (or reuses) this client's private past-customer portal link
+    // -- for the founder to copy and send to the client directly (text,
+    // email, however they normally reach them). Unlike the Stripe portal
+    // link, this one is a long-lived token stored on the client record, not
+    // a short-lived session, since the client will want to reuse the same
+    // link over time to check on their outreach.
+    const clientPortalLinkMatch = pathname.match(/^\/api\/clients\/([^/]+)\/customer-portal-link$/);
+    if (clientPortalLinkMatch && req.method === 'POST') {
+      let clientRecord = db.getClient(clientPortalLinkMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+
+      if (!clientRecord.pastCustomerPortalToken) {
+        clientRecord = db.updateClient(clientRecord.id, { pastCustomerPortalToken: crypto.randomBytes(24).toString('hex') });
+      }
+
+      const baseUrl = `${url.protocol}//${url.host}`;
+      return sendJson(res, 200, { url: `${baseUrl}/customer-portal.html?token=${clientRecord.pastCustomerPortalToken}` });
+    }
+
+    // Read-only view for the founder's dashboard -- the client owns editing
+    // and sending their own outreach on their private portal page, since
+    // they know their own past customers and the founder doesn't (same
+    // reasoning as the automatic script safety check). This just lets the
+    // founder see what's happening without having to ask.
+    const clientPastCustomersMatch = pathname.match(/^\/api\/clients\/([^/]+)\/past-customers$/);
+    if (clientPastCustomersMatch && req.method === 'GET') {
+      const clientRecord = db.getClient(clientPastCustomersMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+
+      let pastCustomers = db.listPastCustomersForClient(clientRecord.id);
+      pastCustomers = await draftDueOutreach(clientRecord, pastCustomers);
+      return sendJson(res, 200, pastCustomers);
     }
 
     // Every website-widget conversation a paying client has had, tagged with
