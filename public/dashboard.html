@@ -127,6 +127,20 @@ async function loadClients() {
         usageHtml = '<div style="font-size:12px; color:#9ca3af;">No plan set yet -- usage isn\'t tracked until this client is on Starter or Growth.</div>';
       }
 
+      let hostedPageHtml;
+      if (client.hostedPageEnabled && client.hostedPageSlug) {
+        const siteUrl = `${window.location.origin}/site/${client.hostedPageSlug}`;
+        hostedPageHtml = `
+          <div style="font-size:12.5px; margin-bottom:8px;">✅ Live at <a href="${siteUrl}" target="_blank" style="color:#1e40af; font-weight:600;">${siteUrl}</a></div>
+          <button class="btn btn-secondary disable-hosted-page-btn" data-id="${client.id}">Turn off</button>
+        `;
+      } else {
+        hostedPageHtml = `
+          <div style="font-size:12px; color:#1e40af; margin-bottom:8px;">If this client doesn't have their own website (or their site won't allow adding the chat widget), turn this on to give them a simple one-page site hosted here instead -- included free, tracks chats, calls, and bookings exactly like their own widget would.</div>
+          <button class="btn btn-secondary enable-hosted-page-btn" data-id="${client.id}">Turn on</button>
+        `;
+      }
+
       let phoneHtml;
       if (!client.retellAgentId) {
         phoneHtml = `
@@ -186,6 +200,16 @@ async function loadClients() {
             <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">Usage this month</div>
             ${usageHtml}
           </div>
+          <div style="margin-top:16px; padding-top:14px; border-top:1px solid #bfdbfe;">
+            <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">Client self-service account</div>
+            <div style="font-size:12px; color:#1e40af; margin-bottom:8px;">Everything on this card, in one link the client can log into themselves -- no password, just a one-click email link. Send this to skip waiting on them to request their own.</div>
+            <button class="btn btn-secondary get-account-link-btn" data-id="${client.id}">Get client login link</button>
+            <div class="account-link-result" data-id="${client.id}" style="margin-top:10px; display:none;"></div>
+          </div>
+          <div style="margin-top:16px; padding-top:14px; border-top:1px solid #bfdbfe;">
+            <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">Hosted website (for clients without their own)</div>
+            ${hostedPageHtml}
+          </div>
         </div>
       `;
     } else if (client.status === 'cancelled') {
@@ -237,6 +261,23 @@ async function loadClients() {
         </div>`
       : '';
 
+    // A client's own self-service portal (public/client-portal.html) lets
+    // them edit their script too, but unlike this dashboard, their edit only
+    // goes live immediately if the same automatic safety check that vets a
+    // brand-new signup is confident it's safe -- otherwise it lands here as
+    // a suggestion, and their live script stays untouched until you apply or
+    // discard it.
+    const pendingEditBanner = client.pendingScriptEdit
+      ? `<div style="margin-top:10px; padding:12px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; font-size:13px; color:#1e40af;">
+          <strong>📝 Client suggested a script edit</strong> -- their live script hasn't changed yet.
+          <textarea readonly style="width:100%; margin-top:8px; min-height:140px; font-family:ui-monospace, monospace; font-size:12px; padding:8px; border-radius:6px; border:1px solid #bfdbfe;">${escapeAttr(client.pendingScriptEdit)}</textarea>
+          <div style="margin-top:8px; display:flex; gap:8px;">
+            <button class="btn btn-primary apply-pending-edit-btn" data-id="${client.id}">Apply this edit</button>
+            <button class="btn btn-secondary discard-pending-edit-btn" data-id="${client.id}">Discard</button>
+          </div>
+        </div>`
+      : '';
+
     card.innerHTML = `
       <div class="top-row">
         <strong>${client.intake?.companyName || '(unnamed)'}</strong>
@@ -246,6 +287,7 @@ async function loadClients() {
         ${client.intake?.trades || ''} · ${client.intake?.serviceArea || ''}${client.intake?.contactEmail ? ' · ' + client.intake.contactEmail : ''}
       </div>
       ${reviewBanner}
+      ${pendingEditBanner}
       <textarea class="script-box" data-id="${client.id}">${client.script || ''}</textarea>
       <div style="margin-top:10px; display:flex; gap:10px;">
         <button class="btn btn-secondary save-btn" data-id="${client.id}">Save edits</button>
@@ -585,6 +627,68 @@ async function loadClients() {
       } finally {
         loadClients();
       }
+    });
+  });
+
+  document.querySelectorAll('.apply-pending-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      btn.disabled = true;
+      btn.textContent = 'Applying...';
+      await fetch(`/api/clients/${id}/pending-script-edit/apply`, { method: 'POST' });
+      loadClients();
+    });
+  });
+
+  document.querySelectorAll('.discard-pending-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      if (!confirm("Discard the client's suggested edit? Their current live script stays as-is.")) return;
+      btn.disabled = true;
+      await fetch(`/api/clients/${id}/pending-script-edit/discard`, { method: 'POST' });
+      loadClients();
+    });
+  });
+
+  document.querySelectorAll('.get-account-link-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const resultBox = document.querySelector(`.account-link-result[data-id="${id}"]`);
+      resultBox.style.display = 'block';
+      resultBox.textContent = 'Generating link...';
+      try {
+        const res = await fetch(`/api/clients/${id}/account-portal-link`, { method: 'POST' });
+        const data = await res.json();
+        if (data.url) {
+          resultBox.innerHTML = `
+            <div style="font-size:12.5px; margin-bottom:4px;">Send this link to the client:</div>
+            <input type="text" readonly value="${data.url}" style="width:100%; padding:8px; border-radius:6px; border:1px solid #bfdbfe; font-size:12.5px;" onclick="this.select()" />
+          `;
+        } else {
+          resultBox.innerHTML = `<span style="color:#b91c1c;">Something went wrong generating the link.</span>`;
+        }
+      } catch (err) {
+        resultBox.innerHTML = `<span style="color:#b91c1c;">Something went wrong generating the link.</span>`;
+      }
+    });
+  });
+
+  document.querySelectorAll('.enable-hosted-page-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      btn.disabled = true;
+      btn.textContent = 'Turning on...';
+      await fetch(`/api/clients/${id}/hosted-page/enable`, { method: 'POST' });
+      loadClients();
+    });
+  });
+
+  document.querySelectorAll('.disable-hosted-page-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      btn.disabled = true;
+      await fetch(`/api/clients/${id}/hosted-page/disable`, { method: 'POST' });
+      loadClients();
     });
   });
 
