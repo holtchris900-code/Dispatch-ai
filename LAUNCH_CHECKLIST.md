@@ -88,6 +88,14 @@ Once both are set up, every client's real phone-call time (from Retell) and webs
 
 Worth testing once a client's phone agent is actually live: make a real test call, then check that client's dashboard card to confirm the minutes showed up. If they don't, check Render's logs -- Retell's exact webhook payload format can change over time, and the code was written against their documented shape as of when this was built.
 
+## Step 12 — Client self-service accounts & the hosted website add-on (no extra setup needed)
+
+Like Step 11, this one needs no new environment variables or dashboard setup -- it's already working as soon as the app is deployed, mostly here so you know what to expect.
+
+Every paying (or previously-paying) client can now log into their own account at `/client-login` -- they enter their signup email and get a one-click login link by email (needs Step 9's Resend setup to actually send; until then, use the "Get client login link" button on their dashboard card to hand them a working link directly). Their account covers everything on their dashboard card: script, billing, phone agent, calendar, conversations, usage, and the hosted-page toggle below. The one thing to know: if a client edits their own script and the automatic safety check isn't confident it's safe, their live script stays untouched and it shows up on your dashboard as a suggested edit to apply or discard -- worth glancing at your dashboard occasionally once clients start using this, the same way you already check for signups needing manual review.
+
+Any client without their own website can turn on a simple one-page site hosted at `/site/<their-business-slug>` right on your domain -- a toggle on their dashboard card or their own portal, included free. It's their business info plus the same AI chat embedded on the page, tracked exactly like their own widget would be. Worth mentioning to any client who signs up saying they don't have a website yet.
+
 ## Before you send this to a single real customer
 
 A couple of things still worth double-checking: make sure you've actually completed Step 7 above (the dashboard ships with a fallback password specifically so it isn't wide open, but that fallback is not something to leave in place), and Step 8 (without it, real customer data can silently disappear). Review the AI-disclosure and outbound-calling compliance notes from the earlier planning document with a real look at your state's specific rules before making any outbound calls. Once Step 8 is done, client data survives restarts and redeploys, but it's still a single JSON file rather than a real database — fine through your first several dozen clients, but worth moving to a proper database once you're relying on this daily with real customers and want protection against two edits happening at the exact same instant.
