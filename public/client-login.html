@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log in — Dispatch AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="logo" href="/">Dispatch<span>AI</span></a>
+  </header>
+
+  <section style="padding: 60px 0; max-width: 440px; margin: 0 auto;">
+    <h1 style="font-size:26px;">Log in to your account</h1>
+    <p style="color:var(--ink-soft); font-size:15px;">
+      Enter the email you signed up with and we'll send you a one-click login link -- no password to remember.
+    </p>
+
+    <div class="field" style="margin-top:20px;">
+      <label for="emailInput">Email address</label>
+      <input type="email" id="emailInput" placeholder="you@yourbusiness.com" />
+    </div>
+    <button class="btn btn-primary btn-block" id="sendBtn" style="margin-top:14px;">Send login link</button>
+    <div id="resultBox" style="margin-top:16px; font-size:14px; display:none;"></div>
+  </section>
+
+  <footer>Dispatch AI — MVP prototype.</footer>
+</div>
+
+<script>
+const emailInput = document.getElementById('emailInput');
+const sendBtn = document.getElementById('sendBtn');
+const resultBox = document.getElementById('resultBox');
+
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('error') === 'expired') {
+  resultBox.style.display = 'block';
+  resultBox.innerHTML = '<span style="color:#b91c1c;">That login link expired or was already used -- request a new one below.</span>';
+}
+
+async function sendLink() {
+  const email = emailInput.value.trim();
+  if (!email) return;
+  sendBtn.disabled = true;
+  sendBtn.textContent = 'Sending...';
+  resultBox.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/client-portal/request-login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: email }),
+    });
+    const data = await res.json();
+    resultBox.style.display = 'block';
+    if (data.demoMode) {
+      resultBox.innerHTML =
+        '<span style="color:#9a3412;">' + data.message + '</span><br>' +
+        '<a href="' + data.loginUrl + '" style="color:var(--accent); font-weight:600;">Use this link now →</a>';
+    } else {
+      resultBox.innerHTML =
+        '<span style="color:#166534;">If that email is on a Dispatch AI account, a login link is on its way -- check your inbox.</span>';
+    }
+  } catch (err) {
+    resultBox.style.display = 'block';
+    resultBox.innerHTML = '<span style="color:#b91c1c;">Something went wrong. Try again in a moment.</span>';
+  } finally {
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'Send login link';
+  }
+}
+
+sendBtn.addEventListener('click', sendLink);
+emailInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') sendLink(); });
+</script>
+</body>
+</html>
