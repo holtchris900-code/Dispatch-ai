@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your account — Dispatch AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="logo">Dispatch<span>AI</span></span>
+  </header>
+
+  <section style="padding: 40px 0; max-width: 760px;">
+    <div id="loadingState">
+      <p style="color:var(--ink-soft);">Loading...</p>
+    </div>
+
+    <div id="invalidState" style="display:none;">
+      <h1 style="font-size:24px;">Link not found</h1>
+      <p style="color:var(--ink-soft);">This link doesn't look right, or it may have been replaced with a newer one. <a href="/client-login" style="color:var(--accent); font-weight:600;">Request a fresh login link</a>.</p>
+    </div>
+
+    <div id="mainState" style="display:none;">
+      <div class="top-row" style="display:flex; justify-content:space-between; align-items:center;">
+        <h1 style="font-size:26px; margin:0;" id="companyTitle">Your account</h1>
+        <span class="status-pill" id="statusPill"></span>
+      </div>
+      <p style="color:var(--ink-soft); font-size:14px; margin-top:6px;">Everything about your Dispatch AI account, in one place.</p>
+
+      <div id="cancelledBox" style="display:none; margin-top:20px; padding:16px; border-radius:10px; background:#fef2f2; border:1px solid #fecaca;">
+        <div style="font-weight:600; color:#991b1b; margin-bottom:8px;">⚠️ Your subscription is cancelled</div>
+        <p style="font-size:13.5px; color:#7f1d1d; margin:0 0 12px;">Resubscribe any time to bring your AI agent back online.</p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-secondary resub-btn" data-plan="starter">Resubscribe — Starter</button>
+          <button class="btn btn-secondary resub-btn" data-plan="growth">Resubscribe — Growth</button>
+        </div>
+        <div id="resubResult" style="margin-top:10px; font-size:13px; display:none;"></div>
+      </div>
+
+      <div id="paidSections" style="display:none;">
+
+        <div id="pendingEditNote" style="display:none; margin-top:20px; padding:14px; border-radius:10px; background:#eff6ff; border:1px solid #bfdbfe; font-size:13.5px; color:#1e40af;">
+          📝 Your last script edit is awaiting a quick review before it goes live -- you'll keep the current script until then.
+        </div>
+
+        <div class="section-block">
+          <h2>Your AI agent's script</h2>
+          <p class="section-hint">Edit the wording your AI agent uses. Most edits go live right away; if anything looks like it might contradict what you told us at signup, it's held for a quick review first instead of changing what customers hear.</p>
+          <textarea id="scriptBox" class="script-box" style="min-height:220px;"></textarea>
+          <button class="btn btn-secondary" id="saveScriptBtn" style="margin-top:10px;">Save edits</button>
+          <div id="scriptResult" style="margin-top:8px; font-size:13px; display:none;"></div>
+        </div>
+
+        <div class="section-block">
+          <h2>Billing</h2>
+          <button class="btn btn-secondary" id="manageBillingBtn">Manage my subscription</button>
+          <div id="billingResult" style="margin-top:10px; font-size:13px; display:none;"></div>
+        </div>
+
+        <div class="section-block">
+          <h2>Website chat widget</h2>
+          <p class="section-hint">Paste this into your own website (just before <code>&lt;/body&gt;</code>) to add your AI chat widget there.</p>
+          <textarea readonly id="widgetSnippet" style="width:100%; padding:8px; border-radius:6px; border:1px solid var(--line); font-size:11.5px; font-family:ui-monospace, monospace; min-height:60px;" onclick="this.select()"></textarea>
+          <div style="margin-top:8px;"><a href="/widget-guide.html" target="_blank" style="font-size:13px; color:var(--accent); font-weight:600;">Step-by-step install guide →</a></div>
+        </div>
+
+        <div class="section-block">
+          <h2>Hosted website (for businesses without their own site)</h2>
+          <p class="section-hint" id="hostedPageHint"></p>
+          <div id="hostedPageBox"></div>
+        </div>
+
+        <div class="section-block">
+          <h2>Chat conversations</h2>
+          <p class="section-hint">Every conversation your AI has had with a real visitor, and whether it turned into a booking.</p>
+          <button class="btn btn-secondary" id="refreshConvosBtn">Refresh</button>
+          <div id="conversationsBox" style="margin-top:12px;"></div>
+        </div>
+
+        <div class="section-block">
+          <h2>Live phone agent</h2>
+          <div id="phoneBox"></div>
+        </div>
+
+        <div class="section-block">
+          <h2>Past customers &amp; repeat-work outreach</h2>
+          <p class="section-hint">Upload your past customers there, and we'll draft a friendly reminder once someone's due for their next service -- you review and approve before anything sends.</p>
+          <button class="btn btn-secondary" id="pastCustomersBtn">Open my customer list</button>
+        </div>
+
+        <div class="section-block">
+          <h2>Real-time appointment booking</h2>
+          <div id="calendarBox"></div>
+        </div>
+
+        <div class="section-block">
+          <h2>Usage this month</h2>
+          <div id="usageBox"></div>
+        </div>
+
+        <div class="section-block">
+          <h2>Account</h2>
+          <p class="section-hint">This page is only reachable with the private link in your address bar -- treat it like a password. If you think it's been shared with someone it shouldn't have, get a new one below; the old link will stop working immediately.</p>
+          <button class="btn btn-secondary" id="regenerateBtn">Get a new private link</button>
+          <div id="regenerateResult" style="margin-top:10px; font-size:13px; display:none;"></div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <footer>Dispatch AI — MVP prototype.</footer>
+</div>
+
+<style>
+  .section-block { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .section-block h2 { font-size: 17px; margin: 0 0 6px; }
+  .section-hint { font-size: 13px; color: var(--ink-soft); margin: 0 0 10px; }
+  .status-draft { background: #fef3c7; color: #92400e; }
+  .status-approved { background: #dcfce7; color: #166534; }
+  .status-generating { background: #e0e7ff; color: #3730a3; }
+  .status-paid { background: #dbeafe; color: #1e40af; }
+  .status-cancelled { background: #fee2e2; color: #991b1b; }
+</style>
+
+<script>
+const token = new URLSearchParams(window.location.search).get('token');
+const loadingState = document.getElementById('loadingState');
+const invalidState = document.getElementById('invalidState');
+const mainState = document.getElementById('mainState');
+
+const PLAN_MINUTES = { starter: 250, growth: 750 };
+const OUTCOME_LABELS = {
+  booked: '✅ Booked',
+  unbooked_lead: '🟠 Unbooked lead',
+  resolved_question: '💬 Question answered',
+  unclear: '⏳ Not reviewed yet',
+  unclassified: '⏳ Not reviewed yet',
+};
+
+function escapeAttr(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function api(path, options) {
+  return fetch('/api/client-portal/' + token + path, options).then(function (r) { return r.json(); });
+}
+
+let currentData = null;
+
+async function load() {
+  if (!token) {
+    loadingState.style.display = 'none';
+    invalidState.style.display = 'block';
+    return;
+  }
+  try {
+    const res = await fetch('/api/client-portal/' + token + '/data');
+    if (!res.ok) {
+      loadingState.style.display = 'none';
+      invalidState.style.display = 'block';
+      return;
+    }
+    const data = await res.json();
+    currentData = data;
+    render(data);
+    loadingState.style.display = 'none';
+    mainState.style.display = 'block';
+  } catch (err) {
+    loadingState.style.display = 'none';
+    invalidState.style.display = 'block';
+  }
+}
+
+function render(data) {
+  document.getElementById('companyTitle').textContent = data.companyName || 'Your account';
+
+  const pill = document.getElementById('statusPill');
+  pill.textContent = data.status;
+  pill.className = 'status-pill status-' + data.status;
+
+  const cancelledBox = document.getElementById('cancelledBox');
+  const paidSections = document.getElementById('paidSections');
+
+  if (data.status === 'cancelled') {
+    cancelledBox.style.display = 'block';
+    paidSections.style.display = 'none';
+    return;
+  }
+
+  cancelledBox.style.display = 'none';
+  paidSections.style.display = 'block';
+
+  document.getElementById('pendingEditNote').style.display = data.pendingScriptEdit ? 'block' : 'none';
+  document.getElementById('scriptBox').value = data.script || '';
+
+  document.getElementById('manageBillingBtn').style.display = data.hasStripeCustomer ? 'inline-flex' : 'none';
+
+  const widgetSnippet = '<script src="' + window.location.origin + '/widget.js" data-client-id="' + data.id +
+    '" data-company-name="' + escapeAttr(data.companyName) + '" data-label="Chat with us"><' + '/script>';
+  document.getElementById('widgetSnippet').value = widgetSnippet;
+
+  renderHostedPage(data);
+  renderConversations(data.conversations || []);
+  renderPhone(data);
+  renderCalendar(data);
+  renderUsage(data);
+}
+
+function renderHostedPage(data) {
+  const hint = document.getElementById('hostedPageHint');
+  const box = document.getElementById('hostedPageBox');
+  if (data.hostedPageEnabled && data.hostedPageSlug) {
+    const siteUrl = window.location.origin + '/site/' + data.hostedPageSlug;
+    hint.textContent = "Live -- share this link anywhere you'd normally share a website.";
+    box.innerHTML =
+      '<div style="font-size:13.5px; margin-bottom:8px;"><a href="' + siteUrl + '" target="_blank" style="color:var(--accent); font-weight:600;">' + siteUrl + '</a></div>' +
+      '<button class="btn btn-secondary" id="disableHostedBtn">Turn off</button>';
+    const btn = document.getElementById('disableHostedBtn');
+    if (btn) btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      await api('/hosted-page/disable', { method: 'POST' });
+      load();
+    });
+  } else {
+    hint.textContent = "Don't have your own website, or it won't allow adding the chat widget? Turn this on for a simple page hosted here instead -- included free, tracks chats, calls, and bookings exactly like your own widget would.";
+    box.innerHTML = '<button class="btn btn-secondary" id="enableHostedBtn">Turn on</button>';
+    const btn = document.getElementById('enableHostedBtn');
+    if (btn) btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'Turning on...';
+      await api('/hosted-page/enable', { method: 'POST' });
+      load();
+    });
+  }
+}
+
+function renderPhone(data) {
+  const box = document.getElementById('phoneBox');
+  if (!data.retellAgentId) {
+    box.innerHTML =
+      '<p class="section-hint">Get a real, live phone number your AI agent answers.</p>' +
+      '<button class="btn btn-secondary" id="createPhoneBtn">Create phone agent</button>' +
+      '<div id="phoneResult" style="margin-top:8px; font-size:13px; display:none;"></div>';
+    document.getElementById('createPhoneBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('createPhoneBtn');
+      const resultBox = document.getElementById('phoneResult');
+      btn.disabled = true;
+      resultBox.style.display = 'block';
+      resultBox.textContent = 'Creating phone agent...';
+      const data2 = await api('/create-phone-agent', { method: 'POST' });
+      if (data2.demoMode) {
+        resultBox.innerHTML = '<span style="color:#9a3412;">' + data2.message + '</span>';
+        btn.disabled = false;
+      } else if (data2.error) {
+        resultBox.innerHTML = '<span style="color:#b91c1c;">' + data2.error + '</span>';
+        btn.disabled = false;
+      } else {
+        load();
+      }
+    });
+  } else {
+    const numberLine = data.retellPhoneNumber
+      ? '<div style="font-size:13.5px; font-weight:600; margin-bottom:8px;">📞 Live number: ' + escapeAttr(data.retellPhoneNumber) + '</div>'
+      : '<p class="section-hint">Your phone agent is created. Once a number is assigned to it, it\'ll show here.</p>';
+    box.innerHTML = numberLine;
+  }
+}
+
+function renderCalendar(data) {
+  const box = document.getElementById('calendarBox');
+  if (data.googleCalendarNeedsReconnect) {
+    box.innerHTML =
+      '<div style="font-size:13px; color:#b91c1c; margin-bottom:8px;">⚠️ Your calendar connection needs to be reconnected.</div>' +
+      '<a class="btn btn-secondary" href="/api/client-portal/' + token + '/google-calendar/connect">Reconnect Google Calendar</a>';
+  } else if (data.googleCalendarConnectedAt) {
+    box.innerHTML =
+      '<div style="font-size:13.5px; font-weight:600; margin-bottom:6px;">✅ Connected' + (data.googleCalendarEmail ? ' as ' + escapeAttr(data.googleCalendarEmail) : '') + '</div>' +
+      '<button class="btn btn-secondary" id="disconnectCalBtn">Disconnect</button>';
+    document.getElementById('disconnectCalBtn').addEventListener('click', async () => {
+      if (!confirm('Disconnect Google Calendar? Your AI widget will go back to collecting booking details manually.')) return;
+      await api('/google-calendar/disconnect', { method: 'POST' });
+      load();
+    });
+  } else {
+    box.innerHTML =
+      '<p class="section-hint">Connect your Google Calendar so your AI can check real availability and book real appointments.</p>' +
+      '<a class="btn btn-secondary" href="/api/client-portal/' + token + '/google-calendar/connect">Connect Google Calendar</a>';
+  }
+}
+
+function renderUsage(data) {
+  const box = document.getElementById('usageBox');
+  const includedMinutes = PLAN_MINUTES[data.plan];
+  if (!includedMinutes) {
+    box.innerHTML = '<div style="font-size:13px; color:var(--ink-faint);">No plan set yet.</div>';
+    return;
+  }
+  const used = data.usageMinutesThisPeriod || 0;
+  const percent = Math.min(100, Math.round((used / includedMinutes) * 100));
+  const overMinutes = Math.max(0, used - includedMinutes);
+  const barColor = overMinutes > 0 ? '#b91c1c' : percent >= 80 ? '#b45309' : '#146856';
+  box.innerHTML =
+    '<div style="font-size:13.5px; font-weight:600; margin-bottom:6px;">' + used + ' / ' + includedMinutes + ' minutes used this billing period</div>' +
+    '<div style="background:#e5e7eb; border-radius:6px; height:8px; overflow:hidden;">' +
+    '<div style="width:' + percent + '%; background:' + barColor + '; height:100%;"></div></div>' +
+    (overMinutes > 0 ? '<div style="font-size:12.5px; color:#b91c1c; margin-top:4px;">' + overMinutes + ' minute(s) over -- billed automatically.</div>' : '');
+}
+
+function renderConversations(conversations) {
+  const box = document.getElementById('conversationsBox');
+  if (conversations.length === 0) {
+    box.innerHTML = '<p class="section-hint">No conversations yet.</p>';
+    return;
+  }
+
+  box.innerHTML = conversations.map((c) => {
+    const outcomeLabel = OUTCOME_LABELS[c.outcome] || c.outcome;
+    const contactBits = [c.contactName, c.contactEmail, c.contactPhone].filter(Boolean).map(escapeAttr).join(' · ');
+    const transcript = (c.messages || []).map((m) => (m.role === 'user' ? 'Visitor' : 'AI') + ': ' + m.content).join('\n');
+
+    let followUpHtml = '';
+    if (c.outcome === 'unbooked_lead' && c.contactEmail && c.followUpStatus !== 'none') {
+      const isApproved = c.followUpStatus === 'approved';
+      const isSent = c.followUpStatus === 'sent';
+      followUpHtml =
+        '<div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--line);">' +
+        '<div style="font-size:12px; font-weight:600; color:#374151; margin-bottom:6px;">Follow-up draft' + (isSent ? ' (Sent ✓)' : isApproved ? ' (Approved ✓)' : '') + '</div>' +
+        '<input type="text" class="followup-subject" data-id="' + c.id + '" value="' + escapeAttr(c.followUpSubject || '') + '" ' + (isSent ? 'disabled' : '') + ' style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:6px;" />' +
+        '<textarea class="followup-body" data-id="' + c.id + '" ' + (isSent ? 'disabled' : '') + ' style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; min-height:70px;">' + escapeAttr(c.followUpBody || '') + '</textarea>' +
+        '<div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">' +
+        '<button class="btn btn-secondary save-followup-btn" data-id="' + c.id + '">Save edits</button>' +
+        '<button class="btn btn-primary approve-followup-btn" data-id="' + c.id + '" ' + (isApproved || isSent ? 'disabled' : '') + '>' + (isApproved || isSent ? 'Approved ✓' : 'Approve') + '</button>' +
+        (!isSent ? '<button class="btn btn-primary send-followup-btn" data-id="' + c.id + '" ' + (isApproved ? '' : 'disabled') + '>Send now</button>' : '') +
+        '</div><div class="send-result" data-id="' + c.id + '" style="margin-top:6px; font-size:12px;"></div></div>';
+    }
+
+    return '<div style="border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:8px;">' +
+      '<div style="display:flex; justify-content:space-between; gap:10px; font-size:12px; color:var(--ink-soft);"><span>' + new Date(c.updatedAt).toLocaleString() + '</span><span>' + outcomeLabel + '</span></div>' +
+      (contactBits ? '<div style="font-size:12.5px; margin-top:4px;">' + contactBits + '</div>' : '') +
+      (c.summary ? '<div style="font-size:12.5px; color:#374151; margin-top:4px;">' + escapeAttr(c.summary) + '</div>' : '') +
+      '<details style="margin-top:6px;"><summary style="font-size:12px; color:var(--accent); cursor:pointer;">View full chat</summary>' +
+      '<pre style="white-space:pre-wrap; font-size:11.5px; background:var(--surface); border-radius:6px; padding:8px; margin-top:6px;">' + escapeAttr(transcript) + '</pre></details>' +
+      followUpHtml + '</div>';
+  }).join('');
+
+  box.querySelectorAll('.save-followup-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const subject = box.querySelector('.followup-subject[data-id="' + id + '"]').value;
+      const body = box.querySelector('.followup-body[data-id="' + id + '"]').value;
+      btn.textContent = 'Saving...';
+      await api('/conversations/' + id + '/follow-up', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ subject, body }),
+      });
+      btn.textContent = 'Save edits';
+    });
+  });
+
+  box.querySelectorAll('.approve-followup-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await api('/conversations/' + btn.dataset.id + '/follow-up/approve', { method: 'POST' });
+      load();
+    });
+  });
+
+  box.querySelectorAll('.send-followup-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const resultBox = box.querySelector('.send-result[data-id="' + id + '"]');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      const data = await api('/conversations/' + id + '/follow-up/send', { method: 'POST' });
+      if (data.demoMode) {
+        resultBox.innerHTML = '<span style="color:#9a3412;">' + data.message + '</span>';
+        btn.disabled = false;
+        btn.textContent = 'Send now';
+      } else if (data.error) {
+        resultBox.innerHTML = '<span style="color:#b91c1c;">' + data.error + '</span>';
+        btn.disabled = false;
+        btn.textContent = 'Send now';
+      } else {
+        load();
+      }
+    });
+  });
+}
+
+document.getElementById('saveScriptBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('saveScriptBtn');
+  const resultBox = document.getElementById('scriptResult');
+  const script = document.getElementById('scriptBox').value;
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  resultBox.style.display = 'none';
+  const data = await api('/script', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ script }) });
+  resultBox.style.display = 'block';
+  if (data.error) {
+    resultBox.innerHTML = '<span style="color:#b91c1c;">' + data.error + '</span>';
+  } else if (data.autoApplied) {
+    resultBox.innerHTML = '<span style="color:#166534;">Saved and live.</span>';
+  } else {
+    resultBox.innerHTML = '<span style="color:#9a3412;">Saved -- this edit needs a quick review before it goes live. You\'ll keep your current script until then.</span>';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Save edits';
+  load();
+});
+
+document.getElementById('manageBillingBtn').addEventListener('click', async () => {
+  const resultBox = document.getElementById('billingResult');
+  resultBox.style.display = 'block';
+  resultBox.textContent = 'Generating link...';
+  const data = await api('/portal', { method: 'POST' });
+  if (data.demoMode) {
+    resultBox.innerHTML = '<span style="color:#9a3412;">' + data.message + '</span>';
+  } else if (data.url) {
+    window.location.href = data.url;
+  } else {
+    resultBox.innerHTML = '<span style="color:#b91c1c;">Something went wrong generating the link.</span>';
+  }
+});
+
+document.querySelectorAll('.resub-btn').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const resultBox = document.getElementById('resubResult');
+    resultBox.style.display = 'block';
+    resultBox.textContent = 'Generating link...';
+    const data = await api('/checkout', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ plan: btn.dataset.plan }),
+    });
+    if (data.demoMode) {
+      resultBox.innerHTML = '<span style="color:#9a3412;">' + data.message + '</span>';
+    } else if (data.url) {
+      window.location.href = data.url;
+    } else {
+      resultBox.innerHTML = '<span style="color:#b91c1c;">Something went wrong generating the link.</span>';
+    }
+  });
+});
+
+document.getElementById('refreshConvosBtn').addEventListener('click', load);
+
+document.getElementById('pastCustomersBtn').addEventListener('click', async () => {
+  const data = await api('/customer-portal-link', { method: 'POST' });
+  if (data.url) window.open(data.url, '_blank');
+});
+
+document.getElementById('regenerateBtn').addEventListener('click', async () => {
+  if (!confirm('This will deactivate your current private link. Continue?')) return;
+  const resultBox = document.getElementById('regenerateResult');
+  const data = await api('/regenerate', { method: 'POST' });
+  if (data.token) {
+    const newUrl = window.location.pathname + '?token=' + data.token;
+    window.history.replaceState(null, '', newUrl);
+    resultBox.style.display = 'block';
+    resultBox.innerHTML = '<span style="color:#166534;">Done -- this page now uses your new link. Update any bookmark to this new address.</span>';
+    load();
+  } else {
+    resultBox.style.display = 'block';
+    resultBox.innerHTML = '<span style="color:#b91c1c;">Something went wrong.</span>';
+  }
+});
+
+load();
+</script>
+</body>
+</html>
