@@ -80,6 +80,26 @@ async function loadClients() {
       const companyName = client.intake?.companyName || '';
       const widgetSnippet = `<script src="${window.location.origin}/widget.js" data-client-id="${client.id}" data-company-name="${escapeAttr(companyName)}" data-label="Chat with us"><` + `/script>`;
 
+      let calendarHtml;
+      if (client.googleCalendarNeedsReconnect) {
+        calendarHtml = `
+          <div style="font-size:12px; color:#b91c1c; margin-bottom:8px;">⚠️ Google Calendar connection needs to be reconnected (it may have been revoked). The AI widget is collecting booking details manually until this is fixed.</div>
+          <a class="btn btn-secondary" href="/api/clients/${client.id}/google-calendar/connect">Reconnect Google Calendar</a>
+        `;
+      } else if (client.googleCalendarConnectedAt) {
+        calendarHtml = `
+          <div style="font-size:12.5px; font-weight:600; margin-bottom:4px;">✅ Connected${client.googleCalendarEmail ? ' as ' + escapeAttr(client.googleCalendarEmail) : ''}</div>
+          <div style="font-size:12px; color:#1e40af; margin-bottom:8px;">Their AI chat widget now checks this calendar for real availability and creates real appointments on it directly.</div>
+          <button class="btn btn-secondary disconnect-calendar-btn" data-id="${client.id}">Disconnect</button>
+          <div class="calendar-result" data-id="${client.id}" style="margin-top:8px; display:none;"></div>
+        `;
+      } else {
+        calendarHtml = `
+          <div style="font-size:12px; color:#1e40af; margin-bottom:8px;">Connect this client's Google Calendar so their AI chat widget can check real availability and book real appointments, instead of just collecting details for someone to confirm later.</div>
+          <a class="btn btn-secondary" href="/api/clients/${client.id}/google-calendar/connect">Connect Google Calendar</a>
+        `;
+      }
+
       let phoneHtml;
       if (!client.retellAgentId) {
         phoneHtml = `
@@ -130,6 +150,10 @@ async function loadClients() {
             <div class="customer-link-result" data-id="${client.id}" style="margin-top:10px; display:none;"></div>
             <button class="btn btn-secondary view-past-customers-btn" data-id="${client.id}" style="margin-top:8px;">View past-customer outreach</button>
             <div class="past-customers-box" data-id="${client.id}" style="margin-top:10px; display:none;"></div>
+          </div>
+          <div style="margin-top:16px; padding-top:14px; border-top:1px solid #bfdbfe;">
+            <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">Real-time appointment booking</div>
+            ${calendarHtml}
           </div>
         </div>
       `;
@@ -515,6 +539,20 @@ async function loadClients() {
         }
       } catch (err) {
         resultBox.innerHTML = `<span style="color:#b91c1c;">Something went wrong generating the link.</span>`;
+      }
+    });
+  });
+
+  document.querySelectorAll('.disconnect-calendar-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      if (!confirm('Disconnect Google Calendar for this client? Their AI widget will go back to collecting booking details manually.')) return;
+      btn.disabled = true;
+      btn.textContent = 'Disconnecting...';
+      try {
+        await fetch(`/api/clients/${id}/google-calendar/disconnect`, { method: 'POST' });
+      } finally {
+        loadClients();
       }
     });
   });
