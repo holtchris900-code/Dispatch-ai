@@ -20,8 +20,8 @@ const { buildConversationInsightPrompt, parseConversationInsight } = require('./
 const { buildFollowUpDraftPrompt, parseFollowUpDraft } = require('./lib/followUpPrompt');
 const { buildScriptSafetyCheckPrompt, parseScriptSafetyCheck } = require('./lib/scriptSafetyCheckPrompt');
 const { sendEmail } = require('./lib/emailClient');
-const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession } = require('./lib/stripeClient');
-const { createPhoneAgent } = require('./lib/retellClient');
+const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession, createInvoiceItem } = require('./lib/stripeClient');
+const { createPhoneAgent, retellWebhookToken } = require('./lib/retellClient');
 const googleCalendar = require('./lib/googleCalendarClient');
 const { parseCsv } = require('./lib/csv');
 const { buildPastCustomerOutreachPrompt, parsePastCustomerOutreach, monthsSince } = require('./lib/pastCustomerOutreachPrompt');
@@ -106,6 +106,114 @@ async function draftDueOutreach(clientRecord, pastCustomers) {
     Object.assign(pc, updated);
   }
   return pastCustomers;
+}
+
+// --- Usage tracking & overage billing (minutes) ------------------------
+// Makes the "N call & chat minutes / month" promise on the pricing page
+// actually true, instead of just a number on a page nothing enforces. Two
+// sources feed a client's usage for the current billing period: real phone
+// call duration from Retell (via their webhook, below) and a fixed estimate
+// per website-widget chat message -- chat doesn't have a natural "minute"
+// the way a phone call does, so each visitor message simply counts as
+// CHAT_MINUTES_PER_MESSAGE minutes. Simple and predictable, though it won't
+// always match a chat's real wall-clock length exactly -- worth knowing.
+//
+// Crossing 80% of the plan's included minutes emails the client a heads-up
+// (once per billing period). Crossing 100% emails a second notice explaining
+// that extra minutes are now billed automatically, and every newly-crossed
+// overage minute is added to the client's Stripe customer as a "pending"
+// invoice item -- Stripe automatically attaches those to their NEXT
+// scheduled invoice, so this needs no metered-billing product/price set up
+// in the Stripe dashboard, and no new environment variables either. The AI
+// agent itself is never blocked or slowed down by any of this -- going over
+// a plan costs the client money, not their customer a missed call or a
+// stalled chat, matching the fail-safe-toward-the-real-customer philosophy
+// used everywhere else in this app.
+//
+// Usage resets to zero when Stripe's `invoice.paid` webhook event fires for
+// a client's subscription (their billing period renewing -- see the webhook
+// handler below). Only Starter and Growth have a defined minute allowance;
+// a client with no recognized plan is silently skipped, which also covers
+// Multi-Location, since that tier is custom-quoted rather than self-serve
+// checkout and so never actually gets `client.plan` set to anything here.
+const CHAT_MINUTES_PER_MESSAGE = 2;
+const PLAN_MINUTES = { starter: 250, growth: 750 };
+// Matches the £0.30-0.35/minute range already promised in the pricing
+// page's footnote -- Growth gets the better per-minute rate, consistent
+// with it already being the better per-minute deal on its base price too.
+const PLAN_OVERAGE_RATE_GBP = { starter: 0.35, growth: 0.3 };
+const USAGE_WARNING_THRESHOLD = 0.8;
+
+async function recordUsageMinutes(clientRecord, minutes) {
+  const plan = clientRecord.plan;
+  const includedMinutes = PLAN_MINUTES[plan];
+  if (!includedMinutes || !minutes) return; // unrecognized/no plan, or nothing to add -- nothing to track
+
+  try {
+    if (!clientRecord.usagePeriodStart) {
+      clientRecord = db.updateClient(clientRecord.id, {
+        usagePeriodStart: clientRecord.paidAt || new Date().toISOString(),
+      });
+    }
+
+    const newTotal = (clientRecord.usageMinutesThisPeriod || 0) + minutes;
+    clientRecord = db.updateClient(clientRecord.id, { usageMinutesThisPeriod: newTotal });
+
+    const companyName = clientRecord.intake?.companyName || 'your business';
+    const planLabel = plan === 'growth' ? 'Growth' : 'Starter';
+    const contactEmail = clientRecord.intake?.contactEmail;
+    const rate = PLAN_OVERAGE_RATE_GBP[plan];
+
+    // Heads-up at 80% -- sent at most once per billing period.
+    if (newTotal >= includedMinutes * USAGE_WARNING_THRESHOLD && !clientRecord.usageWarnedAt && contactEmail) {
+      const result = await sendEmail({
+        to: contactEmail,
+        subject: `${companyName} -- approaching your monthly minute limit`,
+        text: `Hi,\n\nYour Dispatch AI ${planLabel} plan includes ${includedMinutes} call & chat minutes each month. You've used about ${newTotal} of those so far this billing period.\n\nIf you go over, extra minutes are billed automatically at £${rate.toFixed(2)}/minute (the same rate on our pricing page) -- no action needed from you, and your AI agent keeps answering calls and chats without any interruption either way.\n\nWant more minutes included instead? Just reply to this email any time to talk about moving to a higher plan.\n\n-- Dispatch AI`,
+        fromName: 'Dispatch AI',
+      });
+      if (!result.demoMode) {
+        clientRecord = db.updateClient(clientRecord.id, { usageWarnedAt: new Date().toISOString() });
+      }
+    }
+
+    // Over the limit -- notify once, then bill every newly-crossed overage minute.
+    if (newTotal > includedMinutes) {
+      if (!clientRecord.usageOverageNotifiedAt && contactEmail) {
+        const result = await sendEmail({
+          to: contactEmail,
+          subject: `${companyName} -- you've reached your monthly minute limit`,
+          text: `Hi,\n\nYour Dispatch AI ${planLabel} plan's ${includedMinutes} monthly call & chat minutes have now been used for this billing period. Your AI agent keeps working exactly as before -- calls and chats are never interrupted -- but minutes beyond your plan are now billed automatically at £${rate.toFixed(2)}/minute, and will appear as a separate line item on your next invoice.\n\nWant more minutes included instead? Just reply to this email any time to talk about moving to a higher plan.\n\n-- Dispatch AI`,
+          fromName: 'Dispatch AI',
+        });
+        if (!result.demoMode) {
+          clientRecord = db.updateClient(clientRecord.id, { usageOverageNotifiedAt: new Date().toISOString() });
+        }
+      }
+
+      const overageSoFar = newTotal - includedMinutes;
+      const alreadyBilled = clientRecord.overageMinutesBilled || 0;
+      const deltaMinutes = overageSoFar - alreadyBilled;
+
+      if (deltaMinutes > 0 && clientRecord.stripeCustomerId) {
+        const amountPence = Math.round(deltaMinutes * rate * 100);
+        const result = await createInvoiceItem({
+          customerId: clientRecord.stripeCustomerId,
+          amountPence,
+          currency: 'gbp',
+          description: `${deltaMinutes} overage minute(s) beyond your ${planLabel} plan's ${includedMinutes}-minute monthly allowance`,
+        });
+        if (!result.demoMode) {
+          db.updateClient(clientRecord.id, { overageMinutesBilled: overageSoFar });
+        }
+      }
+    }
+  } catch (err) {
+    // Never let usage tracking, a warning email, or overage billing break
+    // the actual call/chat a real customer is having -- same fail-safe
+    // philosophy used everywhere else in this app.
+    console.error(`Usage tracking failed for client ${clientRecord.id}:`, err);
+  }
 }
 
 // --- Real-time calendar booking (Google Calendar) ---------------------------
@@ -537,6 +645,25 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      // Fires at the start of every billing cycle when Stripe generates that
+      // period's invoice -- the signal a client's minute allowance has
+      // renewed, so their usage tracking (see the section above) starts
+      // fresh instead of carrying last period's minutes forward forever.
+      if (event.type === 'invoice.paid') {
+        const invoice = event.data.object;
+        const clientRecord = invoice.subscription ? db.getClientBySubscriptionId(invoice.subscription) : null;
+        if (clientRecord) {
+          db.updateClient(clientRecord.id, {
+            usageMinutesThisPeriod: 0,
+            usagePeriodStart: new Date().toISOString(),
+            usageWarnedAt: null,
+            usageOverageNotifiedAt: null,
+            overageMinutesBilled: null,
+          });
+          console.log(`Client ${clientRecord.id} usage reset for new billing period via Stripe webhook.`);
+        }
+      }
+
       return sendJson(res, 200, { received: true });
     }
 
@@ -572,6 +699,14 @@ const server = http.createServer(async (req, res) => {
 
       const system = buildWidgetChatSystemPrompt(clientRecord);
       const result = await runWidgetChat({ system, messages, clientRecord });
+
+      // Counts toward this client's monthly minutes, same as a real phone
+      // call's duration does -- skipped in demo mode (no ANTHROPIC_API_KEY
+      // yet) so a business isn't billed for interactions that aren't really
+      // using the AI at all.
+      if (!result.demoMode) {
+        await recordUsageMinutes(clientRecord, CHAT_MINUTES_PER_MESSAGE);
+      }
 
       // Remember this conversation so the business owner can see it in their
       // dashboard, even after the visitor closes the tab -- the foundation
@@ -923,9 +1058,11 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
+      const baseUrl = `${url.protocol}//${url.host}`;
       const result = await createPhoneAgent({
         companyName: clientRecord.intake?.companyName,
         script: clientRecord.script,
+        webhookUrl: `${baseUrl}/api/retell/webhook/${retellWebhookToken()}`,
       });
 
       if (!result.demoMode) {
@@ -1257,6 +1394,51 @@ const server = http.createServer(async (req, res) => {
       });
       if (!updated) return sendJson(res, 404, { error: 'not found' });
       return sendJson(res, 200, { disconnected: true });
+    }
+
+    // Retell calls this after every real phone call ends, so its actual
+    // duration counts toward a client's monthly minutes the same way
+    // website-widget chat messages do (see the usage-tracking section
+    // above). Public on purpose -- Retell's own servers hit this directly
+    // and can't carry the dashboard's Basic Auth header, the same reason
+    // /api/stripe/webhook and the Google Calendar callback stay public.
+    // Protected instead by a long, unguessable path segment
+    // (retellWebhookToken(), derived from RETELL_API_KEY) rather than a
+    // login, since only someone who already has this app's Retell key could
+    // construct a working URL for it.
+    const retellWebhookMatch = pathname.match(/^\/api\/retell\/webhook\/([^/]+)$/);
+    if (retellWebhookMatch && req.method === 'POST') {
+      if (retellWebhookMatch[1] !== retellWebhookToken()) {
+        return sendJson(res, 404, { error: 'not found' });
+      }
+
+      const rawBody = await readRawBody(req);
+      let payload;
+      try {
+        payload = JSON.parse(rawBody.toString('utf8'));
+      } catch (err) {
+        return sendJson(res, 400, { error: 'Invalid JSON payload' });
+      }
+
+      // Only call_ended carries a final duration -- Retell's other webhook
+      // events (call_started, call_analyzed) are ignored here so a single
+      // call is never counted more than once. NOTE: this reads the payload
+      // shape documented at https://docs.retellai.com/api-references as of
+      // when this was written -- double-check a real call's payload against
+      // their current docs if minute counts ever look off.
+      if (payload.event === 'call_ended' && payload.call) {
+        const call = payload.call;
+        const durationMs =
+          call.duration_ms ||
+          (call.end_timestamp && call.start_timestamp ? call.end_timestamp - call.start_timestamp : 0);
+        const minutes = durationMs > 0 ? Math.ceil(durationMs / 60000) : 0;
+        const clientRecord = call.agent_id ? db.getClientByRetellAgentId(call.agent_id) : null;
+        if (clientRecord && minutes > 0) {
+          await recordUsageMinutes(clientRecord, minutes);
+        }
+      }
+
+      return sendJson(res, 200, { received: true });
     }
 
     // --- Static files ---------------------------------------------------
