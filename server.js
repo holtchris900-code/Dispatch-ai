@@ -22,6 +22,7 @@ const { buildScriptSafetyCheckPrompt, parseScriptSafetyCheck } = require('./lib/
 const { sendEmail } = require('./lib/emailClient');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession } = require('./lib/stripeClient');
 const { createPhoneAgent } = require('./lib/retellClient');
+const googleCalendar = require('./lib/googleCalendarClient');
 const { parseCsv } = require('./lib/csv');
 const { buildPastCustomerOutreachPrompt, parsePastCustomerOutreach, monthsSince } = require('./lib/pastCustomerOutreachPrompt');
 
@@ -105,6 +106,227 @@ async function draftDueOutreach(clientRecord, pastCustomers) {
     Object.assign(pc, updated);
   }
   return pastCustomers;
+}
+
+// --- Real-time calendar booking (Google Calendar) ---------------------------
+// Lets a paying client's website widget check real availability and create a
+// real appointment directly on that client's own calendar, instead of just
+// collecting details for the founder or client to confirm later. Optional --
+// everything here degrades gracefully to today's "collect details" behavior
+// if GOOGLE_CLIENT_ID/SECRET aren't set, or a specific client hasn't
+// connected their calendar yet.
+
+// Returns a live Google access token for this client, refreshing it via
+// their stored refresh token if the cached one is missing or about to
+// expire, and persisting the refreshed token back to their record so the
+// next request can reuse it without another round trip. Throws 'not_connected'
+// if this client has never connected a calendar -- callers should treat that
+// as a normal, expected case, not an error to log.
+async function getGoogleAccessToken(clientRecord) {
+  if (!clientRecord.googleRefreshToken) {
+    throw new Error('not_connected');
+  }
+  const now = Date.now();
+  if (
+    clientRecord.googleAccessToken &&
+    clientRecord.googleAccessTokenExpiresAt &&
+    now < clientRecord.googleAccessTokenExpiresAt - 60000
+  ) {
+    return clientRecord.googleAccessToken;
+  }
+  const tokens = await googleCalendar.refreshAccessToken(clientRecord.googleRefreshToken);
+  const updated = db.updateClient(clientRecord.id, {
+    googleAccessToken: tokens.access_token,
+    googleAccessTokenExpiresAt: now + (tokens.expires_in || 3600) * 1000,
+    googleCalendarNeedsReconnect: false,
+  });
+  // Keep the in-memory record in sync too, since it's reused for the rest of
+  // this same chat request (possibly across more than one tool call).
+  Object.assign(clientRecord, updated);
+  return tokens.access_token;
+}
+
+// Tool definitions handed to Claude on every widget-chat turn. Advertised
+// unconditionally (even for clients who haven't connected a calendar yet) --
+// executeBookingTool() below handles the "not connected" case by telling
+// Claude to fall back to collecting details manually, which is exactly
+// today's behavior, just reached through the tool instead of hardcoded.
+const BOOKING_TOOLS = [
+  {
+    name: 'check_availability',
+    description:
+      "Check whether a specific date and time is actually free on the business's real calendar. ALWAYS call this before you offer or confirm any specific appointment time to the customer -- never guess or assume a time is open.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'YYYY-MM-DD' },
+        startTime: { type: 'string', description: '24-hour HH:MM, e.g. 14:00' },
+        durationMinutes: { type: 'integer', description: 'Expected length of the appointment in minutes' },
+      },
+      required: ['date', 'startTime'],
+    },
+  },
+  {
+    name: 'book_appointment',
+    description:
+      "Create a REAL appointment on the business's calendar. Only call this once the customer has agreed to a specific date and time you already confirmed was free with check_availability, and you have their name plus a phone number or email to reach them. Never tell a customer their appointment is booked unless this tool reports success.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'YYYY-MM-DD' },
+        startTime: { type: 'string', description: '24-hour HH:MM' },
+        durationMinutes: { type: 'integer' },
+        customerName: { type: 'string' },
+        customerPhone: { type: 'string' },
+        customerEmail: { type: 'string' },
+        issueDescription: { type: 'string', description: 'Short description of what the customer needs' },
+      },
+      required: ['date', 'startTime', 'customerName'],
+    },
+  },
+];
+
+async function executeBookingTool(name, input, clientRecord) {
+  const timeZone = clientRecord.intake?.timeZone || 'Europe/London';
+  const durationMinutes =
+    Number(input.durationMinutes) || Number(clientRecord.intake?.appointmentLengthMinutes) || 60;
+
+  if (!googleCalendar.isConfigured() || !clientRecord.googleRefreshToken) {
+    return {
+      connected: false,
+      note: "Live calendar booking isn't connected for this business yet. Collect the customer's preferred date/time and contact info, and tell them a team member will confirm it -- do not say the appointment is booked.",
+    };
+  }
+
+  const getAccessToken = () => getGoogleAccessToken(clientRecord);
+
+  try {
+    if (name === 'check_availability') {
+      const result = await googleCalendar.checkAvailability({
+        getAccessToken,
+        date: input.date,
+        startTime: input.startTime,
+        durationMinutes,
+        timeZone,
+      });
+      return { connected: true, free: result.free };
+    }
+
+    if (name === 'book_appointment') {
+      const companyName = clientRecord.intake?.companyName || 'the business';
+      const summary = `${input.customerName || 'Customer'} -- ${input.issueDescription || 'Service call'}`;
+      const description = [
+        input.customerPhone ? `Phone: ${input.customerPhone}` : null,
+        input.customerEmail ? `Email: ${input.customerEmail}` : null,
+        input.issueDescription ? `Issue: ${input.issueDescription}` : null,
+        `Booked automatically by ${companyName}'s Dispatch AI website chat widget.`,
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      const result = await googleCalendar.createAppointment({
+        getAccessToken,
+        date: input.date,
+        startTime: input.startTime,
+        durationMinutes,
+        timeZone,
+        summary,
+        description,
+      });
+
+      if (result.conflict) {
+        return {
+          connected: true,
+          booked: false,
+          conflict: true,
+          note: 'That exact time was just taken by someone else. Offer the customer a different time and check it again before confirming.',
+        };
+      }
+      return { connected: true, booked: true };
+    }
+
+    return { error: true, note: 'Unknown tool.' };
+  } catch (err) {
+    if (err.message === 'not_connected') {
+      return {
+        connected: false,
+        note: "Live calendar booking isn't connected for this business yet. Collect the customer's preferred date/time and contact info, and tell them a team member will confirm it.",
+      };
+    }
+    // Covers an expired/revoked refresh token, a Google outage, or anything
+    // else going wrong -- fails safe back to "collect details manually"
+    // rather than ever breaking the chat or claiming a false booking. Also
+    // flags the client's card in the dashboard so the founder notices a
+    // reconnect is needed, rather than this failing silently forever.
+    console.error(`Google Calendar tool "${name}" failed for client ${clientRecord.id}:`, err);
+    db.updateClient(clientRecord.id, { googleCalendarNeedsReconnect: true });
+    return {
+      connected: true,
+      error: true,
+      note: "Something went wrong reaching the calendar just now. Collect the customer's preferred date/time and contact info, and tell them a team member will confirm it shortly.",
+    };
+  }
+}
+
+const MAX_BOOKING_TOOL_ITERATIONS = 6;
+
+// Runs the widget-chat conversation through Claude, letting it call the
+// booking tools as many times as it needs (checking a couple of times,
+// finding one busy, checking another) before producing its final reply to
+// the visitor. All of this tool back-and-forth happens inside this one
+// function call -- the browser only ever sees the final text, and the
+// stored conversation transcript is unaffected, so nothing else in this app
+// needs to know tools exist.
+async function runWidgetChat({ system, messages, clientRecord }) {
+  let anthropicMessages = [...messages];
+
+  for (let i = 0; i < MAX_BOOKING_TOOL_ITERATIONS; i++) {
+    const result = await callClaude({ system, messages: anthropicMessages, tools: BOOKING_TOOLS });
+
+    if (result.demoMode || result.stopReason !== 'tool_use') {
+      return result;
+    }
+
+    const toolUseBlocks = (result.content || []).filter((block) => block.type === 'tool_use');
+    if (toolUseBlocks.length === 0) {
+      return result;
+    }
+
+    // Anthropic requires the assistant's own tool_use content echoed back
+    // before the matching tool_result turn.
+    anthropicMessages.push({ role: 'assistant', content: result.content });
+
+    const toolResults = [];
+    for (const block of toolUseBlocks) {
+      const output = await executeBookingTool(block.name, block.input || {}, clientRecord);
+      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(output) });
+    }
+    anthropicMessages.push({ role: 'user', content: toolResults });
+  }
+
+  // Ran out of iterations without a final answer -- extremely unlikely, but
+  // fail safe with a plain message rather than leaving the visitor hanging.
+  return {
+    text: "Let me have a team member follow up with you directly to lock in the details.",
+    demoMode: false,
+  };
+}
+
+// A tiny, self-contained HTML page for the couple of spots (the Google OAuth
+// callback, mainly) that are reached by a real browser navigation rather
+// than a fetch call, so a plain message and a link back is more useful than
+// a JSON error would be.
+function simpleHtmlPage(title, message, backHref) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title} — Dispatch AI</title>
+<link rel="stylesheet" href="/styles.css"></head>
+<body><div class="wrap"><section style="padding:60px 0; max-width:520px; margin:0 auto; text-align:center;">
+<h1 style="font-size:24px;">${title}</h1>
+<p style="color:#4b5563; font-size:15px;">${message}</p>
+<a class="btn btn-primary" href="${backHref}" style="display:inline-block; margin-top:16px;">Back to dashboard</a>
+</section></div></body></html>`;
 }
 
 function sendJson(res, statusCode, data, extraHeaders = {}) {
@@ -349,7 +571,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       const system = buildWidgetChatSystemPrompt(clientRecord);
-      const result = await callClaude({ system, messages });
+      const result = await runWidgetChat({ system, messages, clientRecord });
 
       // Remember this conversation so the business owner can see it in their
       // dashboard, even after the visitor closes the tab -- the foundation
@@ -937,6 +1159,106 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, result);
     }
 
+    // Starts the Google OAuth flow for one paying client, so their AI widget
+    // can check real availability and create real appointments on their own
+    // calendar. A plain link on the dashboard, not a fetch button -- this is
+    // a real full-page navigation to Google's consent screen, and comes back
+    // under /api/clients so the dashboard's normal Basic Auth gate above
+    // already covers it, the same as every other per-client action.
+    const googleCalendarConnectMatch = pathname.match(/^\/api\/clients\/([^/]+)\/google-calendar\/connect$/);
+    if (googleCalendarConnectMatch && req.method === 'GET') {
+      const clientRecord = db.getClient(googleCalendarConnectMatch[1]);
+      if (!clientRecord) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        return res.end('Client not found.');
+      }
+      if (!googleCalendar.isConfigured()) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end(
+          simpleHtmlPage(
+            'Google Calendar not set up yet',
+            "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET aren't set on this app yet -- see LAUNCH_CHECKLIST.md to connect Google Calendar before this button can work.",
+            '/dashboard'
+          )
+        );
+      }
+      const baseUrl = `${url.protocol}//${url.host}`;
+      const authUrl = googleCalendar.getAuthUrl({ clientId: clientRecord.id, baseUrl });
+      res.writeHead(302, { location: authUrl });
+      return res.end();
+    }
+
+    // Google redirects here after the business owner approves (or declines)
+    // calendar access. Public on purpose -- Google's own servers hit this
+    // URL directly and can't carry the dashboard's Basic Auth header, the
+    // same reason /api/stripe/webhook and /api/portal-session stay public.
+    // `state` carries the client ID through the redirect (set in
+    // getAuthUrl above).
+    if (pathname === '/api/google-calendar/oauth-callback' && req.method === 'GET') {
+      const code = url.searchParams.get('code');
+      const stateClientId = url.searchParams.get('state');
+      const oauthError = url.searchParams.get('error');
+      const baseUrl = `${url.protocol}//${url.host}`;
+
+      if (oauthError || !code || !stateClientId) {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end(
+          simpleHtmlPage(
+            'Calendar connection cancelled',
+            "Google Calendar wasn't connected -- you can go back to your dashboard and try again.",
+            '/dashboard'
+          )
+        );
+      }
+
+      try {
+        const tokens = await googleCalendar.exchangeCodeForTokens({ code, baseUrl });
+        const existing = db.getClient(stateClientId);
+        const connectedEmail = await googleCalendar.getConnectedEmail(tokens.access_token);
+        db.updateClient(stateClientId, {
+          // Google only sends a refresh_token when access is freshly
+          // granted (thanks to prompt=consent, that's every time) -- this
+          // fallback just protects against an unexpected missing field.
+          googleRefreshToken: tokens.refresh_token || existing?.googleRefreshToken || null,
+          googleAccessToken: tokens.access_token,
+          googleAccessTokenExpiresAt: Date.now() + (tokens.expires_in || 3600) * 1000,
+          googleCalendarConnectedAt: new Date().toISOString(),
+          googleCalendarEmail: connectedEmail,
+          googleCalendarNeedsReconnect: false,
+        });
+        res.writeHead(302, { location: '/dashboard' });
+        return res.end();
+      } catch (err) {
+        console.error('Google Calendar OAuth callback failed:', err);
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end(
+          simpleHtmlPage(
+            'Calendar connection failed',
+            'Something went wrong connecting Google Calendar. Go back to your dashboard and try again.',
+            '/dashboard'
+          )
+        );
+      }
+    }
+
+    // Lets the founder disconnect a client's calendar -- e.g. to reconnect a
+    // different Google account, or if a client asks for it to be turned
+    // off. Their AI widget falls straight back to collecting details
+    // manually, exactly like a client who never connected one at all.
+    const googleCalendarDisconnectMatch = pathname.match(/^\/api\/clients\/([^/]+)\/google-calendar\/disconnect$/);
+    if (googleCalendarDisconnectMatch && req.method === 'POST') {
+      const updated = db.updateClient(googleCalendarDisconnectMatch[1], {
+        googleRefreshToken: null,
+        googleAccessToken: null,
+        googleAccessTokenExpiresAt: null,
+        googleCalendarConnectedAt: null,
+        googleCalendarEmail: null,
+        googleCalendarNeedsReconnect: false,
+      });
+      if (!updated) return sendJson(res, 404, { error: 'not found' });
+      return sendJson(res, 200, { disconnected: true });
+    }
+
     // --- Static files ---------------------------------------------------
     if (req.method === 'GET') {
       return serveStaticFile(req, res, pathname);
@@ -962,5 +1284,8 @@ server.listen(PORT, () => {
   }
   if (!process.env.DATA_DIR) {
     console.log('WARNING: DATA_DIR is not set -- client data is stored on the local filesystem and will be WIPED on every restart, redeploy, or Render free-tier spin-down. See LAUNCH_CHECKLIST.md to fix this with a persistent disk.');
+  }
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    console.log('NOTE: GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set -- the dashboard\'s "Connect Google Calendar" button will show a setup message instead of connecting a real calendar. See LAUNCH_CHECKLIST.md.');
   }
 });
