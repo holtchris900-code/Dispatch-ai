@@ -29,6 +29,12 @@
 </div>
 
 <script>
+// Mirrors PLAN_MINUTES in server.js -- only Starter and Growth have a
+// defined monthly minute allowance, so a client without one of these two
+// plan values (e.g. still unset, or the custom-quoted Multi-Location tier)
+// just doesn't get a usage section at all.
+const PLAN_MINUTES = { starter: 250, growth: 750 };
+
 // Used when embedding a client's own company name inside an HTML attribute
 // (the widget embed snippet) so quotes/special characters in their name
 // can't break the generated code.
@@ -100,6 +106,27 @@ async function loadClients() {
         `;
       }
 
+      let usageHtml = '';
+      const includedMinutes = PLAN_MINUTES[client.plan];
+      if (includedMinutes) {
+        const used = client.usageMinutesThisPeriod || 0;
+        const percent = Math.min(100, Math.round((used / includedMinutes) * 100));
+        const overMinutes = Math.max(0, used - includedMinutes);
+        const barColor = overMinutes > 0 ? '#b91c1c' : percent >= 80 ? '#b45309' : '#146856';
+        const overNote = overMinutes > 0
+          ? `<div style="font-size:12px; color:#b91c1c; margin-top:4px;">${overMinutes} minute(s) over -- billed automatically, added to their next Stripe invoice.</div>`
+          : '';
+        usageHtml = `
+          <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">${used} / ${includedMinutes} minutes used this billing period</div>
+          <div style="background:#e5e7eb; border-radius:6px; height:8px; overflow:hidden;">
+            <div style="width:${percent}%; background:${barColor}; height:100%;"></div>
+          </div>
+          ${overNote}
+        `;
+      } else {
+        usageHtml = '<div style="font-size:12px; color:#9ca3af;">No plan set yet -- usage isn\'t tracked until this client is on Starter or Growth.</div>';
+      }
+
       let phoneHtml;
       if (!client.retellAgentId) {
         phoneHtml = `
@@ -154,6 +181,10 @@ async function loadClients() {
           <div style="margin-top:16px; padding-top:14px; border-top:1px solid #bfdbfe;">
             <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">Real-time appointment booking</div>
             ${calendarHtml}
+          </div>
+          <div style="margin-top:16px; padding-top:14px; border-top:1px solid #bfdbfe;">
+            <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">Usage this month</div>
+            ${usageHtml}
           </div>
         </div>
       `;
