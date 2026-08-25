@@ -45,6 +45,19 @@
           <label>Hours of operation</label>
           <input name="hours" placeholder="e.g. 7am-7pm daily, 24/7 emergency dispatch" />
         </div>
+        <div class="field">
+          <label>Business time zone</label>
+          <select name="timeZone">
+            <option value="Europe/London" selected>UK (London)</option>
+            <option value="Europe/Dublin">Ireland (Dublin)</option>
+            <option value="America/New_York">US Eastern (New York)</option>
+            <option value="America/Chicago">US Central (Chicago)</option>
+            <option value="America/Denver">US Mountain (Denver)</option>
+            <option value="America/Los_Angeles">US Pacific (Los Angeles)</option>
+            <option value="Australia/Sydney">Australia Eastern (Sydney)</option>
+          </select>
+          <div class="hint">Used so appointment times your AI books land at the correct time on your real calendar.</div>
+        </div>
       </fieldset>
 
       <fieldset>
@@ -69,6 +82,11 @@
         <div class="field">
           <label>Info to collect before booking</label>
           <input name="bookingInfoNeeded" placeholder="e.g. name, address, phone, best callback time, issue description" />
+        </div>
+        <div class="field">
+          <label>Typical appointment length (minutes)</label>
+          <input name="appointmentLengthMinutes" type="number" min="15" step="15" placeholder="e.g. 60" />
+          <div class="hint">How long to block off on your calendar for a typical job, once you connect real calendar booking. Defaults to 60 minutes if left blank.</div>
         </div>
       </fieldset>
 
