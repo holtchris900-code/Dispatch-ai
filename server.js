@@ -251,6 +251,13 @@ async function draftDueOutreach(clientRecord, pastCustomers) {
 // checkout and so never actually gets `client.plan` set to anything here.
 const CHAT_MINUTES_PER_MESSAGE = 2;
 const PLAN_MINUTES = { starter: 250, growth: 750 };
+// Free-trial length offered on a client's first-ever checkout (see
+// FREE_TRIAL_DAYS usage below) -- matches what OnCrew, Rosie, and Ringly
+// all lead with. Only applied when a client has never had a paid
+// subscription before (clientRecord.paidAt is unset), so a client who
+// cancelled and comes back through the self-service portal doesn't get a
+// second trial -- Stripe would otherwise happily grant one every time.
+const FREE_TRIAL_DAYS = 14;
 // Matches the £0.30-0.35/minute range already promised in the pricing
 // page's footnote -- Growth gets the better per-minute rate, consistent
 // with it already being the better per-minute deal on its base price too.
@@ -1070,7 +1077,9 @@ const server = http.createServer(async (req, res) => {
             clientId: id,
             priceId: process.env.STRIPE_PRICE_ID_STARTER,
             companyName: intake.companyName,
+            trialDays: FREE_TRIAL_DAYS, // brand-new signup -- always their first checkout
             successUrl: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+
             cancelUrl: `${baseUrl}/?checkout=cancelled`,
           });
 
@@ -1364,16 +1373,21 @@ const server = http.createServer(async (req, res) => {
       const clientRecord = db.getClientByPortalToken(clientPortalCheckoutMatch[1]);
       if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
 
-      const { plan } = await readBody(req);
+            const { plan } = await readBody(req);
       const priceId = plan === 'growth' ? process.env.STRIPE_PRICE_ID_GROWTH : process.env.STRIPE_PRICE_ID_STARTER;
       const baseUrl = `${url.protocol}//${url.host}`;
       const result = await createCheckoutSession({
         clientId: clientRecord.id,
         priceId,
         companyName: clientRecord.intake?.companyName,
+        // No trial here -- this route is a cancelled client resubscribing
+        // themselves, and clientRecord.paidAt is already set from their
+        // earlier subscription, so they've already had their one trial.
+        trialDays: clientRecord.paidAt ? 0 : FREE_TRIAL_DAYS,
         successUrl: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
         cancelUrl: `${baseUrl}/client-portal.html?token=${clientPortalCheckoutMatch[1]}`,
       });
+
 
       const normalizedPlan = plan === 'growth' ? 'growth' : 'starter';
       if (!result.demoMode) {
@@ -1614,10 +1628,12 @@ const server = http.createServer(async (req, res) => {
         plan === 'growth' ? process.env.STRIPE_PRICE_ID_GROWTH : process.env.STRIPE_PRICE_ID_STARTER;
       const baseUrl = `${url.protocol}//${url.host}`;
 
-      const result = await createCheckoutSession({
+            const result = await createCheckoutSession({
         clientId: clientRecord.id,
         priceId,
         companyName: clientRecord.intake?.companyName,
+        // Same first-time-only trial rule as the auto-approval flow above.
+        trialDays: clientRecord.paidAt ? 0 : FREE_TRIAL_DAYS,
         // These used to point at /dashboard, which is password-protected --
         // a real paying client has no way past that login. They go to the
         // public /success page instead, which is where the self-service
@@ -1625,6 +1641,7 @@ const server = http.createServer(async (req, res) => {
         successUrl: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
         cancelUrl: `${baseUrl}/?checkout=cancelled`,
       });
+
 
       const normalizedPlan = plan === 'growth' ? 'growth' : 'starter';
       if (!result.demoMode) {
