@@ -36,6 +36,8 @@ Last, go to **Developers → Webhooks**, click "Add endpoint," and enter `https:
 
 Once all four of those environment variables are set in Render and the service redeploys, the dashboard's payment link buttons go from showing a demo-mode message to generating real, working Stripe checkout links you can text or email to an approved client.
 
+Every one of those checkout links now includes a **14-day free trial** automatically — a client isn't charged until it ends, and can cancel free any time before that. This is built into the code itself (Stripe's `trial_period_days` option), so there's nothing extra to set up in the Stripe dashboard for it. It only applies the first time a given client ever checks out — if they cancel and come back later through their own self-service portal, that second checkout has no trial, so it can't be reused indefinitely.
+
 One more setting makes cancellation self-service for your clients, instead of them having to email you and you cancelling it for them manually: in Stripe, go to **Settings → Billing → Customer portal** and turn it on. Stripe will ask what you want to allow customers to do in that portal — make sure **"Cancel subscriptions"** is switched on (updating the payment method is on by default and worth leaving on too). Save it. That's it — no code, just a one-time toggle. After a client pays, they land on a page with a "Manage my subscription" button that opens this portal; you can also generate the same link for any paid client any time from your dashboard, under a "Get manage-subscription link" button on their card.
 
 ## Step 7 — Set your dashboard password
