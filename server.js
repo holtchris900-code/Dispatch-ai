@@ -13,7 +13,7 @@ const crypto = require('crypto');
 
 const db = require('./lib/db');
 const { callClaude } = require('./lib/claude');
-const { buildScriptGenerationPrompt, DEMO_SYSTEM_PROMPT } = require('./lib/scriptPrompt');
+const { buildScriptGenerationPrompt, DEMO_SYSTEM_PROMPT, buildPersonalizedDemoPrompt } = require('./lib/scriptPrompt');
 const { HELP_CHAT_SYSTEM_PROMPT } = require('./lib/helpChatPrompt');
 const { buildWidgetChatSystemPrompt } = require('./lib/widgetChatPrompt');
 const { buildConversationInsightPrompt, parseConversationInsight } = require('./lib/conversationInsightPrompt');
@@ -976,15 +976,25 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ...result, conversationId: convo.id }, WIDGET_CORS_HEADERS);
     }
 
-    // --- Landing page demo chat widget -----------------------------------
+      // --- Landing page demo chat widget -----------------------------------
+    // Defaults to the fixed fictional persona (DEMO_SYSTEM_PROMPT), but a
+    // visitor can personalize the demo with their own company name (and
+    // optionally trade) via the "Try it as my business" box on the landing
+    // page -- see buildPersonalizedDemoPrompt for how that stays honest
+    // about not knowing this business's real details yet.
     if (pathname === '/api/chat' && req.method === 'POST') {
-      const { messages } = await readBody(req);
+      const { messages, companyName, trade } = await readBody(req);
       if (!Array.isArray(messages) || messages.length === 0) {
         return sendJson(res, 400, { error: 'messages array is required' });
       }
-      const result = await callClaude({ system: DEMO_SYSTEM_PROMPT, messages });
+      const system =
+        companyName && companyName.trim()
+          ? buildPersonalizedDemoPrompt(companyName.trim(), trade ? trade.trim() : '')
+          : DEMO_SYSTEM_PROMPT;
+      const result = await callClaude({ system, messages });
       return sendJson(res, 200, result);
     }
+
 
     // --- Help chat widget on the intake form (/onboard) -------------------
     // Separate from /api/chat (the landing-page demo, which role-plays as a
