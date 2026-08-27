@@ -138,8 +138,24 @@ h1 .accent { color: var(--accent); }
 .price-anchor {
   text-align: center; font-size: 13.75px; color: var(--accent-dark); background: var(--accent-soft);
   border: 1px solid var(--accent-line); border-radius: 999px; padding: 10px 22px;
-  max-width: 640px; margin: 0 auto 34px; line-height: 1.5;
+  max-width: 640px; margin: 0 auto 20px; line-height: 1.5;
 }
+
+/* Free-trial risk-reversal line, directly under the price-anchor pill */
+.trial-note {
+  text-align: center; font-size: 13.5px; color: var(--ink-soft);
+  max-width: 56ch; margin: 0 auto 30px; line-height: 1.5;
+}
+.trial-note b { color: var(--accent-dark); }
+
+/* "Works with Google Calendar" trust badge on the Books the job feature card */
+.integration-badge {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
+  font-size: 12px; font-weight: 600; color: var(--accent-dark);
+  background: var(--accent-soft); border: 1px solid var(--accent-line);
+  padding: 5px 10px 5px 8px; border-radius: 999px;
+}
+.integration-badge svg { width: 13px; height: 13px; flex-shrink: 0; }
 
 /* Generic sections */
 .section { padding: 64px 0; }
