@@ -39,7 +39,26 @@
     </div>
 
     <div class="chat-card" id="demo">
-      <div class="badge"><span class="dot"></span> Live demo — "Summit Air &amp; Plumbing" (fictional demo company)</div>
+      <div class="badge"><span class="dot"></span> <span id="demoBadgeText">Live demo — "Summit Air &amp; Plumbing" (fictional demo company)</span></div>
+
+      <div class="demo-personalize" id="demoPersonalize">
+        <p>Or type in your own business and the demo will answer as your AI would — no signup needed.</p>
+        <div class="demo-personalize-row">
+          <input id="demoCompanyInput" type="text" placeholder="Your company name" maxlength="60" />
+          <select id="demoTradeInput">
+            <option value="">Trade (optional)</option>
+            <option value="HVAC">HVAC</option>
+            <option value="Plumbing">Plumbing</option>
+            <option value="Electrical">Electrical</option>
+            <option value="HVAC, plumbing & electrical">HVAC, plumbing &amp; electrical</option>
+          </select>
+          <button class="btn btn-primary" id="personalizeBtn" type="button">Try it as my business</button>
+        </div>
+      </div>
+      <div class="demo-personalized-note" id="demoPersonalizedNote">
+        Personalized for <b id="demoPersonalizedName"></b> — <a id="changeDemoLink">use the example instead</a>
+      </div>
+
       <div id="chatLog">
         <div class="msg ai"><div class="bubble">Thanks for calling Summit Air & Plumbing, this is your AI assistant — how can I help today?</div></div>
       </div>
@@ -89,7 +108,7 @@
       </div>
       <div class="feature-card">
         <h3>Flags emergencies</h3>
-        <p>You define what counts as urgent — no heat, a gas smell, an active leak — and it's handled differently.</p>
+        <p>You define what counts as urgent for your trade — no heat in freezing weather, a burst pipe or active flooding, exposed wiring or a burning smell — and it's handled differently from a routine booking.</p>
       </div>
       <div class="feature-card">
         <h3>You stay in control</h3>
@@ -101,6 +120,7 @@
   <section class="section" id="pricing">
     <h2>Simple, transparent pricing</h2>
     <p class="lead">No enterprise sales calls, no seat minimums — just a flat monthly price built for one-location home service businesses. Billed monthly in GBP, cancel anytime.</p>
+    <p class="price-anchor">A part-time receptionist typically costs £1,500+/month, and traditional phone-answering services often charge £150–£400/month for business-hours-only coverage. Dispatch AI starts at £119/month for round-the-clock coverage.</p>
     <div class="pricing-grid">
       <div class="price-card">
         <h3>Starter</h3>
@@ -147,6 +167,37 @@
   </section>
 
   <section class="section">
+    <h2>Common questions</h2>
+    <p class="lead">The things most owners ask before they hand their phone line to an AI.</p>
+    <div class="faq-list">
+      <details class="faq-item">
+        <summary>What if it doesn't know the answer to something?</summary>
+        <p>It's built to say a team member will follow up rather than guess or make something up — the same rule that applies to your real script. A true emergency can also be routed straight to whoever you're already on-call to for it.</p>
+      </details>
+      <details class="faq-item">
+        <summary>What happens if we go over our plan's minutes?</summary>
+        <p>Nothing changes for the customer on the phone — calls and chats are never cut off or slowed down. Extra minutes beyond your plan are simply billed automatically at £0.30–£0.35/minute and added to your next invoice.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Will it sound robotic, or will customers know it's AI?</summary>
+        <p>It always discloses that it's an AI assistant right in the greeting — that's a compliance requirement, not optional. Beyond that, you write and approve every word it says before it ever talks to a real customer, so the tone is yours, not a generic script.</p>
+      </details>
+      <details class="faq-item">
+        <summary>What happens to our current phone number?</summary>
+        <p>Your AI agent gets its own live number once you're ready for phone calls, and you decide how it fits your existing line — most businesses just forward their current number to it, so nothing about the number your customers already call has to change.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Can we cancel or switch back easily?</summary>
+        <p>Yes — cancel any time from your own self-service account, no phone call or long-term contract required. Billing stops immediately and you keep access until the end of what you already paid for.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Can we review what it will say before it goes live?</summary>
+        <p>Always. Every script is drafted from your own answers, and you read, edit, and approve it before it's ever used on a real call or chat — the same review applies any time you edit it yourself later.</p>
+      </details>
+    </div>
+  </section>
+
+  <section class="section">
     <div class="cta-banner">
       <h2>Stop losing jobs to a missed call.</h2>
       <p>Set up your AI agent this afternoon and see exactly what it will say to your customers before it ever answers a real call.</p>
@@ -163,9 +214,20 @@ const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
 const demoModeBanner = document.getElementById('demoModeBanner');
 
+const demoBadgeText = document.getElementById('demoBadgeText');
+const demoPersonalize = document.getElementById('demoPersonalize');
+const demoPersonalizedNote = document.getElementById('demoPersonalizedNote');
+const demoPersonalizedName = document.getElementById('demoPersonalizedName');
+const demoCompanyInput = document.getElementById('demoCompanyInput');
+const demoTradeInput = document.getElementById('demoTradeInput');
+const personalizeBtn = document.getElementById('personalizeBtn');
+const changeDemoLink = document.getElementById('changeDemoLink');
+
 let history = [
   { role: 'assistant', content: "Thanks for calling Summit Air & Plumbing, this is your AI assistant — how can I help today?" }
 ];
+let demoCompanyName = null;
+let demoTrade = null;
 
 function addBubble(role, text) {
   const msg = document.createElement('div');
@@ -177,6 +239,32 @@ function addBubble(role, text) {
   chatLog.appendChild(msg);
   chatLog.scrollTop = chatLog.scrollHeight;
 }
+
+function personalizeDemo() {
+  const name = demoCompanyInput.value.trim();
+  if (!name) { demoCompanyInput.focus(); return; }
+  demoCompanyName = name;
+  demoTrade = demoTradeInput.value;
+
+  const greeting = `Thanks for calling ${name}, this is your AI assistant — how can I help today?`;
+  history = [{ role: 'assistant', content: greeting }];
+  chatLog.innerHTML = '';
+  addBubble('ai', greeting);
+  demoModeBanner.style.display = 'none';
+
+  demoBadgeText.textContent = `Live demo — personalized for "${name}"`;
+  demoPersonalize.style.display = 'none';
+  demoPersonalizedNote.style.display = 'block';
+  demoPersonalizedName.textContent = name;
+}
+
+personalizeBtn.addEventListener('click', personalizeDemo);
+demoCompanyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') personalizeDemo(); });
+changeDemoLink.addEventListener('click', () => {
+  demoPersonalize.style.display = 'block';
+  demoPersonalizedNote.style.display = 'none';
+  demoCompanyInput.focus();
+});
 
 async function sendMessage() {
   const text = chatInput.value.trim();
@@ -192,7 +280,7 @@ async function sendMessage() {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ messages: history })
+      body: JSON.stringify({ messages: history, companyName: demoCompanyName, trade: demoTrade })
     });
     const data = await res.json();
     placeholder.remove();
