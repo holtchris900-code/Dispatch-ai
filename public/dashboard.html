@@ -151,8 +151,9 @@ async function loadClients() {
       } else {
         const numberLine = client.retellPhoneNumber
           ? `<div style="font-size:13px; font-weight:600; margin-bottom:6px;">📞 Live number: ${escapeAttr(client.retellPhoneNumber)}</div>`
-          : `<div style="font-size:12px; color:#1e40af; margin-bottom:8px;">Phone agent created. Now, inside Retell's own dashboard (no code needed): go to Phone Numbers → buy or import a number → assign its inbound agent to the ID below. Call it yourself to test before giving it to the client.</div>`;
-        phoneHtml = `
+                    : `<div style="font-size:12px; color:#1e40af; margin-bottom:8px;">Phone agent created. A number is normally bought and assigned automatically within a few seconds. If one doesn't show up after a refresh, the automatic purchase likely hit a snag (you should also get an email about it) — buy/import one by hand inside Telnyx and Retell's dashboards and paste it below in the meantime.</div>`;
+
+        iphoneHtml = `
           ${numberLine}
           <div style="font-size:11.5px; color:#1e40af; margin-bottom:8px;">Retell agent ID: <code style="font-size:11px;">${client.retellAgentId}</code></div>
           <input type="text" class="phone-number-input" data-id="${client.id}" value="${escapeAttr(client.retellPhoneNumber || '')}" placeholder="Paste the number here once it's assigned in Retell" style="width:100%; padding:8px; border-radius:6px; border:1px solid #bfdbfe; font-size:12.5px; margin-bottom:8px;" />
