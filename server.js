@@ -22,7 +22,9 @@ const { buildScriptSafetyCheckPrompt, parseScriptSafetyCheck } = require('./lib/
 const { sendEmail } = require('./lib/emailClient');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession, createInvoiceItem } = require('./lib/stripeClient');
 const { createPhoneAgent, retellWebhookToken } = require('./lib/retellClient');
+const { provisionPhoneNumber } = require('./lib/phoneProvisioning');
 const googleCalendar = require('./lib/googleCalendarClient');
+
 const { parseCsv } = require('./lib/csv');
 const { buildPastCustomerOutreachPrompt, parsePastCustomerOutreach, monthsSince } = require('./lib/pastCustomerOutreachPrompt');
 
@@ -1417,9 +1419,38 @@ const server = http.createServer(async (req, res) => {
       if (clientRecord.status !== 'paid') {
         return sendJson(res, 400, { error: 'You need to be on a paid plan before creating a live phone agent.' });
       }
-      if (clientRecord.retellAgentId) {
-        return sendJson(res, 200, { demoMode: false, llmId: clientRecord.retellLlmId, agentId: clientRecord.retellAgentId });
+            if (clientRecord.retellAgentId) {
+        // Agent already exists. If an earlier automatic number purchase
+        // failed (or hadn't been built yet), a repeat click here is also a
+        // reasonable moment to try again, instead of the client being stuck
+        // with no number forever just because the first attempt hit a
+        // hiccup.
+        if (!clientRecord.retellPhoneNumber) {
+          const provision = await provisionPhoneNumber({
+            agentId: clientRecord.retellAgentId,
+            companyName: clientRecord.intake?.companyName,
+          });
+          if (provision.success) {
+            db.updateClient(clientRecord.id, {
+              retellPhoneNumber: provision.phoneNumber,
+              retellPhoneNumberSavedAt: new Date().toISOString(),
+            });
+          } else if (!provision.demoMode) {
+            await notifyFounder({
+              companyName: clientRecord.intake?.companyName,
+              reason: `Automatic phone number purchase failed: ${provision.error || provision.message}. Buy one manually in Telnyx and import it to Retell agent ${clientRecord.retellAgentId}, then save it on this client's card.`,
+            });
+          }
+        }
+        const refreshed = db.getClient(clientRecord.id) || clientRecord;
+        return sendJson(res, 200, {
+          demoMode: false,
+          llmId: refreshed.retellLlmId,
+          agentId: refreshed.retellAgentId,
+          retellPhoneNumber: refreshed.retellPhoneNumber || null,
+        });
       }
+
 
       const baseUrl = `${url.protocol}//${url.host}`;
       const result = await createPhoneAgent({
@@ -1428,17 +1459,40 @@ const server = http.createServer(async (req, res) => {
         webhookUrl: `${baseUrl}/api/retell/webhook/${retellWebhookToken()}`,
       });
 
-      if (!result.demoMode) {
+            if (!result.demoMode) {
         db.updateClient(clientRecord.id, {
           retellLlmId: result.llmId,
           retellAgentId: result.agentId,
           retellAgentCreatedAt: new Date().toISOString(),
         });
+
+        // Automatically buy this client their own real UK number and bind
+        // it to the agent just created -- see lib/phoneProvisioning.js.
+        // Never blocks: if it fails, the agent above still exists and the
+        // client can still use the manual /phone-number fallback route
+        // below (or the founder can retry by re-clicking, handled above).
+        const provision = await provisionPhoneNumber({
+          agentId: result.agentId,
+          companyName: clientRecord.intake?.companyName,
+        });
+        if (provision.success) {
+          db.updateClient(clientRecord.id, {
+            retellPhoneNumber: provision.phoneNumber,
+            retellPhoneNumberSavedAt: new Date().toISOString(),
+          });
+          result.retellPhoneNumber = provision.phoneNumber;
+        } else if (!provision.demoMode) {
+          await notifyFounder({
+            companyName: clientRecord.intake?.companyName,
+            reason: `Automatic phone number purchase failed: ${provision.error || provision.message}. Buy one manually in Telnyx and import it to Retell agent ${result.agentId}, then save it on this client's card.`,
+          });
+        }
       }
       return sendJson(res, 200, result);
     }
 
     const clientPortalPhoneNumberMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/phone-number$/);
+
     if (clientPortalPhoneNumberMatch && req.method === 'POST') {
       const clientRecord = db.getClientByPortalToken(clientPortalPhoneNumberMatch[1]);
       if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
@@ -1681,12 +1735,34 @@ const server = http.createServer(async (req, res) => {
       if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
       if (clientRecord.status !== 'paid') {
         return sendJson(res, 400, { error: 'This client needs to be on a paid plan before creating a live phone agent.' });
-      }
-      if (clientRecord.retellAgentId) {
+      }      if (clientRecord.retellAgentId) {
+        // Agent already exists. If an earlier automatic number purchase
+        // failed (or hadn't been built yet), a repeat click here is also a
+        // reasonable moment to try again, rather than the client staying
+        // stuck with no number just because the first attempt hit a hiccup.
+        if (!clientRecord.retellPhoneNumber) {
+          const provision = await provisionPhoneNumber({
+            agentId: clientRecord.retellAgentId,
+            companyName: clientRecord.intake?.companyName,
+          });
+          if (provision.success) {
+            db.updateClient(clientRecord.id, {
+              retellPhoneNumber: provision.phoneNumber,
+              retellPhoneNumberSavedAt: new Date().toISOString(),
+            });
+          } else if (!provision.demoMode) {
+            await notifyFounder({
+              companyName: clientRecord.intake?.companyName,
+              reason: `Automatic phone number purchase failed: ${provision.error || provision.message}. Buy one manually in Telnyx and import it to Retell agent ${clientRecord.retellAgentId}, then save it on this client's card.`,
+            });
+          }
+        }
+        const refreshed = db.getClient(clientRecord.id) || clientRecord;
         return sendJson(res, 200, {
           demoMode: false,
-          llmId: clientRecord.retellLlmId,
-          agentId: clientRecord.retellAgentId,
+          llmId: refreshed.retellLlmId,
+          agentId: refreshed.retellAgentId,
+          retellPhoneNumber: refreshed.retellPhoneNumber || null,
         });
       }
 
@@ -1703,10 +1779,34 @@ const server = http.createServer(async (req, res) => {
           retellAgentId: result.agentId,
           retellAgentCreatedAt: new Date().toISOString(),
         });
+
+        // Automatically buy this client their own real UK number and bind
+        // it to the agent just created -- see lib/phoneProvisioning.js.
+        // Never blocks: if it fails, the agent above still exists and the
+        // founder can save a number by hand via the input box below, or
+        // retry by re-clicking (handled above).
+        const provision = await provisionPhoneNumber({
+          agentId: result.agentId,
+          companyName: clientRecord.intake?.companyName,
+        });
+        if (provision.success) {
+          db.updateClient(clientRecord.id, {
+            retellPhoneNumber: provision.phoneNumber,
+            retellPhoneNumberSavedAt: new Date().toISOString(),
+          });
+          result.retellPhoneNumber = provision.phoneNumber;
+        } else if (!provision.demoMode) {
+          await notifyFounder({
+            companyName: clientRecord.intake?.companyName,
+            reason: `Automatic phone number purchase failed: ${provision.error || provision.message}. Buy one manually in Telnyx and import it to Retell agent ${result.agentId}, then save it on this client's card.`,
+          });
+        }
       }
 
       return sendJson(res, 200, result);
     }
+
+      
 
     // Lets the founder record the phone number once they've bought/imported
     // it and assigned it to the agent above -- entirely inside Retell's own
