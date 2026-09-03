@@ -22,7 +22,21 @@ Buy a domain (e.g., `dispatchai.com`) from a registrar like Namecheap or Google 
 
 ## Step 5 — Connect a real phone number (when you're ready to take real calls)
 
-Sign up at retellai.com and add a payment method. Get your Retell API key from their dashboard and add it to Render's environment variables as `RETELL_API_KEY`. Once a client is on a paid plan, their dashboard card gets a "Create phone agent" button — click it and it pushes their approved script into Retell as a real voice agent, no command line needed. Then, entirely inside Retell's own dashboard (no code), you buy or import a phone number and assign it to that new agent using the agent ID shown on their card. Call the number yourself first to make sure it sounds right, then paste the number into the box on their dashboard card so it's saved for reference before handing it to the client.
+Sign up at retellai.com and add a payment method. Get your Retell API key from their dashboard and add it to Render's environment variables as `RETELL_API_KEY`. Once a client is on a paid plan, their dashboard card gets a "Create phone agent" button — click it and it pushes their approved script into Retell as a real voice agent, no command line needed.
+
+Retell doesn't sell UK numbers directly, so getting each client their own real number needs one more service in between: Telnyx. The app can now do this part **automatically** — every time a client's phone agent is created, it buys them their own dedicated UK number and wires it straight to their agent, so nobody is ever left waiting on a number being bought and assigned by hand. That automation needs a **one-time** setup below (about 10 minutes, entirely inside Telnyx's own dashboard, no code) — do it once, and every client after that gets a number automatically.
+
+**One-time Telnyx setup:**
+
+1. Create a free account at telnyx.com, add a payment method, and complete their identity/address verification (Telnyx calls this KYC — it's required once before any UK numbers become purchasable, and covers every future number you buy, not just the first one).
+2. In the Telnyx dashboard, create a **Connection** (under Voice → SIP Trunking — either an FQDN or Credential connection works). Set its **Origination** to point at `sip:sip.retellai.com` — this is what tells Telnyx to send incoming calls on any number attached to this connection over to Retell. Set its **Termination** to use **username/password credential** authentication (not IP whitelisting) — Telnyx will show you the username and password it generated. Copy the connection's **ID** (shown on its settings page), plus that username and password.
+3. Add four new environment variables in Render: `TELNYX_API_KEY` (from Telnyx's dashboard under API Keys), `TELNYX_CONNECTION_ID` (the connection ID from step 2), `TELNYX_SIP_TERMINATION_URI` (the SIP URI shown for that same connection, looks like `yourtrunkname.sip.telnyx.com`), and `TELNYX_SIP_USERNAME` / `TELNYX_SIP_PASSWORD` (the credentials from step 2).
+4. Optional: add `TELNYX_NUMBER_LOCALITY` (e.g. `London`) to narrow automatic number searches to a specific UK city — leave it blank to just take whatever's available anywhere in the UK.
+
+Once those are set and the service redeploys, the "Create phone agent" button does everything in one click: creates the Retell agent, buys a real UK number from Telnyx, and binds that number to the new agent — the number shows up on the client's card (and their own portal) automatically, usually within a few seconds. **Call the number yourself** the first time this runs for a real client, to confirm it actually rings through and sounds right, before handing it over.
+
+If the automatic purchase ever fails for any reason (Telnyx temporarily out of local numbers, a network hiccup, and so on), it never blocks the agent itself from being created — you'll get an email (once Step 9's email setup is done) flagging that client for a manual look, and can buy a number by hand inside Telnyx or Retell's own dashboard and paste it into the box on their dashboard card instead, exactly like before this automation existed.
+
 
 ## Step 6 — Set up real Stripe payments
 
