@@ -1436,7 +1436,9 @@ const server = http.createServer(async (req, res) => {
               retellPhoneNumberSavedAt: new Date().toISOString(),
             });
           } else if (!provision.demoMode) {
-            await notifyFounder({
+            console.error('Automatic phone number purchase failed (retry):', provision.error || provision.message);
+            await notifyFounder({            
+
               companyName: clientRecord.intake?.companyName,
               reason: `Automatic phone number purchase failed: ${provision.error || provision.message}. Buy one manually in Telnyx and import it to Retell agent ${clientRecord.retellAgentId}, then save it on this client's card.`,
             });
@@ -1482,6 +1484,7 @@ const server = http.createServer(async (req, res) => {
           });
           result.retellPhoneNumber = provision.phoneNumber;
         } else if (!provision.demoMode) {
+                    console.error('Automatic phone number purchase failed (first creation):', provision.error || provision.message);
           await notifyFounder({
             companyName: clientRecord.intake?.companyName,
             reason: `Automatic phone number purchase failed: ${provision.error || provision.message}. Buy one manually in Telnyx and import it to Retell agent ${result.agentId}, then save it on this client's card.`,
@@ -1751,6 +1754,7 @@ const server = http.createServer(async (req, res) => {
               retellPhoneNumberSavedAt: new Date().toISOString(),
             });
           } else if (!provision.demoMode) {
+                        console.error('Automatic phone number purchase failed (retry):', provision.error || provision.message);
             await notifyFounder({
               companyName: clientRecord.intake?.companyName,
               reason: `Automatic phone number purchase failed: ${provision.error || provision.message}. Buy one manually in Telnyx and import it to Retell agent ${clientRecord.retellAgentId}, then save it on this client's card.`,
@@ -1796,6 +1800,7 @@ const server = http.createServer(async (req, res) => {
           });
           result.retellPhoneNumber = provision.phoneNumber;
         } else if (!provision.demoMode) {
+                    console.error('Automatic phone number purchase failed (first creation):', provision.error || provision.message);
           await notifyFounder({
             companyName: clientRecord.intake?.companyName,
             reason: `Automatic phone number purchase failed: ${provision.error || provision.message}. Buy one manually in Telnyx and import it to Retell agent ${result.agentId}, then save it on this client's card.`,
