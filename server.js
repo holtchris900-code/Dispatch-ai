@@ -416,7 +416,7 @@ const BOOKING_TOOLS = [
   },
 ];
 
-async function executeBookingTool(name, input, clientRecord) {
+async function executeBookingTool(name, input, clientRecord, source = 'website chat widget') {
   const timeZone = clientRecord.intake?.timeZone || 'Europe/London';
   const durationMinutes =
     Number(input.durationMinutes) || Number(clientRecord.intake?.appointmentLengthMinutes) || 60;
@@ -449,7 +449,7 @@ async function executeBookingTool(name, input, clientRecord) {
         input.customerPhone ? `Phone: ${input.customerPhone}` : null,
         input.customerEmail ? `Email: ${input.customerEmail}` : null,
         input.issueDescription ? `Issue: ${input.issueDescription}` : null,
-        `Booked automatically by ${companyName}'s Dispatch AI website chat widget.`,
+                `Booked automatically by ${companyName}'s Dispatch AI ${source}.`,
       ]
         .filter(Boolean)
         .join('\n');
@@ -1453,13 +1453,17 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-
       const baseUrl = `${url.protocol}//${url.host}`;
       const result = await createPhoneAgent({
         companyName: clientRecord.intake?.companyName,
         script: clientRecord.script,
         webhookUrl: `${baseUrl}/api/retell/webhook/${retellWebhookToken()}`,
+        toolsUrl: `${baseUrl}/api/retell/tools/${retellWebhookToken()}`,
+        timeZone: clientRecord.intake?.timeZone,
+        appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
       });
+
+      
 
             if (!result.demoMode) {
         db.updateClient(clientRecord.id, {
@@ -1770,12 +1774,16 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      const baseUrl = `${url.protocol}//${url.host}`;
+            const baseUrl = `${url.protocol}//${url.host}`;
       const result = await createPhoneAgent({
         companyName: clientRecord.intake?.companyName,
         script: clientRecord.script,
         webhookUrl: `${baseUrl}/api/retell/webhook/${retellWebhookToken()}`,
+        toolsUrl: `${baseUrl}/api/retell/tools/${retellWebhookToken()}`,
+        timeZone: clientRecord.intake?.timeZone,
+        appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
       });
+
 
       if (!result.demoMode) {
         db.updateClient(clientRecord.id, {
@@ -2201,10 +2209,62 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      return sendJson(res, 200, { received: true });
+        return sendJson(res, 200, { received: true });
+    }
+
+    // Retell calls this DURING a live phone call whenever the phone agent
+    // invokes its check_availability or book_appointment tool (see
+    // lib/retellClient.js's createPhoneAgent) -- same real-time Google
+    // Calendar logic the website chat widget already uses (executeBookingTool
+    // / BOOKING_TOOLS above), just reached from a phone call instead of a
+    // chat message. One shared route for both tools since Retell's payload
+    // already says which tool it's calling (payload.name) -- executeBookingTool
+    // already branches on that same name for the chat-widget path, so there's
+    // nothing tool-specific to duplicate here.
+    //
+    // Public on purpose, same reasoning as /api/retell/webhook above: Retell's
+    // own servers hit this mid-call and can't carry the dashboard's Basic
+    // Auth header. Protected instead by the same long, unguessable path
+    // segment (retellWebhookToken()) already used for that webhook.
+    //
+    // Always returns 200 with a real (if sometimes "didn't work") result --
+    // never a hard error -- so a live call never breaks or goes silent
+    // mid-conversation just because this endpoint had trouble; the agent's
+    // own instructions (see createPhoneAgent) tell it to fall back to
+    // collecting details by hand whenever a tool reports anything other than
+    // a clean success.
+    const retellToolMatch = pathname.match(/^\/api\/retell\/tools\/([^/]+)$/);
+    if (retellToolMatch && req.method === 'POST') {
+      if (retellToolMatch[1] !== retellWebhookToken()) {
+        return sendJson(res, 404, { error: 'not found' });
+      }
+
+      const rawBody = await readRawBody(req);
+      let payload;
+      try {
+        payload = JSON.parse(rawBody.toString('utf8'));
+      } catch (err) {
+        return sendJson(res, 200, {
+          error: true,
+          note: "Something went wrong reading that request. Collect the customer's preferred date/time and contact info, and tell them a team member will confirm it.",
+        });
+      }
+
+      const agentId = payload.call?.agent_id;
+      const clientRecord = agentId ? db.getClientByRetellAgentId(agentId) : null;
+      if (!clientRecord) {
+        return sendJson(res, 200, {
+          connected: false,
+          note: "Couldn't find this business's account. Collect the customer's preferred date/time and contact info, and tell them a team member will confirm it.",
+        });
+      }
+
+      const result = await executeBookingTool(payload.name, payload.args || {}, clientRecord, 'phone call');
+      return sendJson(res, 200, result);
     }
 
     // Public hosted-website add-on page -- see renderHostedSitePage above.
+
     const hostedSiteMatch = pathname.match(/^\/site\/([^/]+)$/);
     if (hostedSiteMatch && req.method === 'GET') {
       const clientRecord = db.getClientByHostedPageSlug(hostedSiteMatch[1]);
