@@ -21,7 +21,7 @@ const { buildFollowUpDraftPrompt, parseFollowUpDraft } = require('./lib/followUp
 const { buildScriptSafetyCheckPrompt, parseScriptSafetyCheck } = require('./lib/scriptSafetyCheckPrompt');
 const { sendEmail } = require('./lib/emailClient');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession, createInvoiceItem } = require('./lib/stripeClient');
-const { createPhoneAgent, retellWebhookToken } = require('./lib/retellClient');
+const { createPhoneAgent, updatePhoneAgentTools, retellWebhookToken } = require('./lib/retellClient');
 const { provisionPhoneNumber } = require('./lib/phoneProvisioning');
 const googleCalendar = require('./lib/googleCalendarClient');
 
@@ -1419,13 +1419,35 @@ const server = http.createServer(async (req, res) => {
       if (clientRecord.status !== 'paid') {
         return sendJson(res, 400, { error: 'You need to be on a paid plan before creating a live phone agent.' });
       }
-            if (clientRecord.retellAgentId) {
+                        if (clientRecord.retellAgentId) {
+        // Also keep this agent's "brain" in sync with the client's current
+        // script and real-time calendar-booking tools -- covers a client
+        // whose agent was created before booking tools existed, or whose
+        // script has been edited since their agent was first built. Never
+        // blocks the rest of this route if it fails (e.g. a transient
+        // Retell hiccup): the phone-number retry below, and the response
+        // itself, still go ahead either way.
+        try {
+          const toolsBaseUrl = `${url.protocol}//${url.host}`;
+          await updatePhoneAgentTools({
+            llmId: clientRecord.retellLlmId,
+            companyName: clientRecord.intake?.companyName,
+            script: clientRecord.script,
+            toolsUrl: `${toolsBaseUrl}/api/retell/tools/${retellWebhookToken()}`,
+            timeZone: clientRecord.intake?.timeZone,
+            appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
+          });
+        } catch (err) {
+          console.error("Refreshing existing phone agent's booking tools failed:", err.message || err);
+        }
+
         // Agent already exists. If an earlier automatic number purchase
         // failed (or hadn't been built yet), a repeat click here is also a
         // reasonable moment to try again, instead of the client being stuck
         // with no number forever just because the first attempt hit a
         // hiccup.
         if (!clientRecord.retellPhoneNumber) {
+
           const provision = await provisionPhoneNumber({
             agentId: clientRecord.retellAgentId,
             companyName: clientRecord.intake?.companyName,
@@ -1741,13 +1763,7 @@ const server = http.createServer(async (req, res) => {
       const clientRecord = db.getClient(clientPhoneAgentMatch[1]);
       if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
       if (clientRecord.status !== 'paid') {
-        return sendJson(res, 400, { error: 'This client needs to be on a paid plan before creating a live phone agent.' });
-      }      if (clientRecord.retellAgentId) {
-        // Agent already exists. If an earlier automatic number purchase
-        // failed (or hadn't been built yet), a repeat click here is also a
-        // reasonable moment to try again, rather than the client staying
-        // stuck with no number just because the first attempt hit a hiccup.
-        if (!clientRecord.retellPhoneNumber) {
+        return sendJson(res, 400, { error: 'This client needs to be on a paid plan before creating a live phone 
           const provision = await provisionPhoneNumber({
             agentId: clientRecord.retellAgentId,
             companyName: clientRecord.intake?.companyName,
@@ -1765,6 +1781,34 @@ const server = http.createServer(async (req, res) => {
             });
           }
         }
+            }      if (clientRecord.retellAgentId) {
+        // Also keep this agent's "brain" in sync with the client's current
+        // script and real-time calendar-booking tools -- covers a client
+        // whose agent was created before booking tools existed, or whose
+        // script has been edited since their agent was first built. Never
+        // blocks the rest of this route if it fails (e.g. a transient
+        // Retell hiccup): the phone-number retry below, and the response
+        // itself, still go ahead either way.
+        try {
+          const toolsBaseUrl = `${url.protocol}//${url.host}`;
+          await updatePhoneAgentTools({
+            llmId: clientRecord.retellLlmId,
+            companyName: clientRecord.intake?.companyName,
+            script: clientRecord.script,
+            toolsUrl: `${toolsBaseUrl}/api/retell/tools/${retellWebhookToken()}`,
+            timeZone: clientRecord.intake?.timeZone,
+            appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
+          });
+        } catch (err) {
+          console.error("Refreshing existing phone agent's booking tools failed:", err.message || err);
+        }
+
+        // Agent already exists. If an earlier automatic number purchase
+        // failed (or hadn't been built yet), a repeat click here is also a
+        // reasonable moment to try again, rather than the client staying
+        // stuck with no number just because the first attempt hit a hiccup.
+        if (!clientRecord.retellPhoneNumber) {
+
         const refreshed = db.getClient(clientRecord.id) || clientRecord;
         return sendJson(res, 200, {
           demoMode: false,
