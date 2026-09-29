@@ -1,4 +1,3 @@
-// Dispatch AI MVP server.
 //
 // Deliberately built with ZERO npm dependencies (only Node's built-in
 // `http`, `fs`, `path`, `crypto` modules). This means it runs anywhere with
@@ -260,7 +259,7 @@ const PLAN_MINUTES = { starter: 250, growth: 750 };
 // cancelled and comes back through the self-service portal doesn't get a
 // second trial -- Stripe would otherwise happily grant one every time.
 const FREE_TRIAL_DAYS = 14;
-// Matches the £0.30-0.35/minute range already promised in the pricing
+// Matches the Â£0.30-0.35/minute range already promised in the pricing
 // page's footnote -- Growth gets the better per-minute rate, consistent
 // with it already being the better per-minute deal on its base price too.
 const PLAN_OVERAGE_RATE_GBP = { starter: 0.35, growth: 0.3 };
@@ -291,7 +290,7 @@ async function recordUsageMinutes(clientRecord, minutes) {
       const result = await sendEmail({
         to: contactEmail,
         subject: `${companyName} -- approaching your monthly minute limit`,
-        text: `Hi,\n\nYour Dispatch AI ${planLabel} plan includes ${includedMinutes} call & chat minutes each month. You've used about ${newTotal} of those so far this billing period.\n\nIf you go over, extra minutes are billed automatically at £${rate.toFixed(2)}/minute (the same rate on our pricing page) -- no action needed from you, and your AI agent keeps answering calls and chats without any interruption either way.\n\nWant more minutes included instead? Just reply to this email any time to talk about moving to a higher plan.\n\n-- Dispatch AI`,
+        text: `Hi,\n\nYour Dispatch AI ${planLabel} plan includes ${includedMinutes} call & chat minutes each month. You've used about ${newTotal} of those so far this billing period.\n\nIf you go over, extra minutes are billed automatically at Â£${rate.toFixed(2)}/minute (the same rate on our pricing page) -- no action needed from you, and your AI agent keeps answering calls and chats without any interruption either way.\n\nWant more minutes included instead? Just reply to this email any time to talk about moving to a higher plan.\n\n-- Dispatch AI`,
         fromName: 'Dispatch AI',
       });
       if (!result.demoMode) {
@@ -305,7 +304,7 @@ async function recordUsageMinutes(clientRecord, minutes) {
         const result = await sendEmail({
           to: contactEmail,
           subject: `${companyName} -- you've reached your monthly minute limit`,
-          text: `Hi,\n\nYour Dispatch AI ${planLabel} plan's ${includedMinutes} monthly call & chat minutes have now been used for this billing period. Your AI agent keeps working exactly as before -- calls and chats are never interrupted -- but minutes beyond your plan are now billed automatically at £${rate.toFixed(2)}/minute, and will appear as a separate line item on your next invoice.\n\nWant more minutes included instead? Just reply to this email any time to talk about moving to a higher plan.\n\n-- Dispatch AI`,
+          text: `Hi,\n\nYour Dispatch AI ${planLabel} plan's ${includedMinutes} monthly call & chat minutes have now been used for this billing period. Your AI agent keeps working exactly as before -- calls and chats are never interrupted -- but minutes beyond your plan are now billed automatically at Â£${rate.toFixed(2)}/minute, and will appear as a separate line item on your next invoice.\n\nWant more minutes included instead? Just reply to this email any time to talk about moving to a higher plan.\n\n-- Dispatch AI`,
           fromName: 'Dispatch AI',
         });
         if (!result.demoMode) {
@@ -550,7 +549,7 @@ function simpleHtmlPage(title, message, backHref, linkLabel = 'Back to dashboard
   return `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${title} — Dispatch AI</title>
+<title>${title} â Dispatch AI</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body><div class="wrap"><section style="padding:60px 0; max-width:520px; margin:0 auto; text-align:center;">
 <h1 style="font-size:24px;">${title}</h1>
@@ -587,7 +586,7 @@ const CLIENT_LOGIN_TOKEN_TTL_MS = 15 * 60 * 1000;
 function renderHostedSitePage(clientRecord) {
   const intake = clientRecord.intake || {};
   const companyName = escapeHtml(intake.companyName || 'Our business');
-  const tagline = [intake.trades, intake.serviceArea].filter(Boolean).map(escapeHtml).join(' · ');
+  const tagline = [intake.trades, intake.serviceArea].filter(Boolean).map(escapeHtml).join(' Â· ');
   const hours = intake.hours ? escapeHtml(intake.hours) : null;
   const phone = clientRecord.retellPhoneNumber ? escapeHtml(clientRecord.retellPhoneNumber) : null;
   const clientIdJson = JSON.stringify(clientRecord.id);
@@ -1763,25 +1762,9 @@ const server = http.createServer(async (req, res) => {
       const clientRecord = db.getClient(clientPhoneAgentMatch[1]);
       if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
       if (clientRecord.status !== 'paid') {
-        return sendJson(res, 400, { error: 'This client needs to be on a paid plan before creating a live phone 
-          const provision = await provisionPhoneNumber({
-            agentId: clientRecord.retellAgentId,
-            companyName: clientRecord.intake?.companyName,
-          });
-          if (provision.success) {
-            db.updateClient(clientRecord.id, {
-              retellPhoneNumber: provision.phoneNumber,
-              retellPhoneNumberSavedAt: new Date().toISOString(),
-            });
-          } else if (!provision.demoMode) {
-                        console.error('Automatic phone number purchase failed (retry):', provision.error || provision.message);
-            await notifyFounder({
-              companyName: clientRecord.intake?.companyName,
-              reason: `Automatic phone number purchase failed: ${provision.error || provision.message}. Buy one manually in Telnyx and import it to Retell agent ${clientRecord.retellAgentId}, then save it on this client's card.`,
-            });
-          }
-        }
-            }      if (clientRecord.retellAgentId) {
+        return sendJson(res, 400, { error: 'This client needs to be on a paid plan before creating a live phone agent.' });
+      }
+      if (clientRecord.retellAgentId) {
         // Also keep this agent's "brain" in sync with the client's current
         // script and real-time calendar-booking tools -- covers a client
         // whose agent was created before booking tools existed, or whose
@@ -1808,6 +1791,23 @@ const server = http.createServer(async (req, res) => {
         // reasonable moment to try again, rather than the client staying
         // stuck with no number just because the first attempt hit a hiccup.
         if (!clientRecord.retellPhoneNumber) {
+          const provision = await provisionPhoneNumber({
+            agentId: clientRecord.retellAgentId,
+            companyName: clientRecord.intake?.companyName,
+          });
+          if (provision.success) {
+            db.updateClient(clientRecord.id, {
+              retellPhoneNumber: provision.phoneNumber,
+              retellPhoneNumberSavedAt: new Date().toISOString(),
+            });
+          } else if (!provision.demoMode) {
+            console.error('Automatic phone number purchase failed (retry):', provision.error || provision.message);
+            await notifyFounder({
+              companyName: clientRecord.intake?.companyName,
+              reason: `Automatic phone number purchase failed: ${provision.error || provision.message}. Buy one manually in Telnyx and import it to Retell agent ${clientRecord.retellAgentId}, then save it on this client's card.`,
+            });
+          }
+        }
 
         const refreshed = db.getClient(clientRecord.id) || clientRecord;
         return sendJson(res, 200, {
