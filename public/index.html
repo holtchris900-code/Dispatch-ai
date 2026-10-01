@@ -327,7 +327,8 @@ chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessag
 // new one per visitor. If RETELL_PUBLIC_KEY isn't set up on the server yet,
 // that route returns demoMode:true and this just shows a friendly fallback
 // message instead of a dead button.
-import { RetellClient } from 'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@3.0.1/dist/index.m.js';
+import { RetellClient } from 'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@3.0.1/+esm';
+
 
 const voiceDemoBtn = document.getElementById('voiceDemoBtn');
 const voiceDemoIdle = document.getElementById('voiceDemoIdle');
