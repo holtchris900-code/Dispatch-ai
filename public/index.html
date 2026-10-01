@@ -41,7 +41,22 @@
     <div class="chat-card" id="demo">
       <div class="badge"><span class="dot"></span> <span id="demoBadgeText">Live demo — "Summit Air &amp; Plumbing" (fictional demo company)</span></div>
 
-      <div class="demo-personalize" id="demoPersonalize">
+            <div class="voice-demo" id="voiceDemo">
+        <div class="voice-demo-idle" id="voiceDemoIdle">
+          <button class="btn btn-primary voice-demo-btn" id="voiceDemoBtn" type="button">🎤 Talk to it live</button>
+          <span class="voice-demo-hint">Tap to talk through your mic — no sign-up, no dialing.</span>
+        </div>
+        <div class="voice-demo-controls" id="voiceDemoControls">
+          <span class="voice-demo-live-dot"></span>
+          <span class="voice-demo-status" id="voiceDemoStatus">Connecting…</span>
+          <button class="voice-demo-icon-btn" id="voiceDemoMuteBtn" type="button">Mute</button>
+          <button class="voice-demo-icon-btn voice-demo-end" id="voiceDemoEndBtn" type="button">End call</button>
+        </div>
+        <div class="voice-demo-unavailable" id="voiceDemoUnavailable">
+          Voice demo is being set up — try the text chat below in the meantime.
+        </div>
+      </div>
+
         <p>Or type in your own business and the demo will answer as your AI would — no signup needed.</p>
         <div class="demo-personalize-row">
           <input id="demoCompanyInput" type="text" placeholder="Your company name" maxlength="60" />
@@ -301,5 +316,117 @@ async function sendMessage() {
 sendBtn.addEventListener('click', sendMessage);
 chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
 </script>
-</body>
+<script type="module">
+// Live, in-browser "talk to it now" voice demo -- lets a visitor talk to a
+// real Retell voice agent through their own mic, no phone number or sign-up
+// needed. Uses Retell's newer public-key web-call flow (RetellClient from
+// retell-client-js-sdk 3.x), loaded straight from a CDN since this project
+// has no frontend build step. The agent_id and public key both come from
+// /api/demo/voice-agent -- server.js creates the demo agent once (lazily,
+// the first time anyone tries this) and caches it, so this never creates a
+// new one per visitor. If RETELL_PUBLIC_KEY isn't set up on the server yet,
+// that route returns demoMode:true and this just shows a friendly fallback
+// message instead of a dead button.
+import { RetellClient } from 'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@3.0.1/dist/index.m.js';
+
+const voiceDemoBtn = document.getElementById('voiceDemoBtn');
+const voiceDemoIdle = document.getElementById('voiceDemoIdle');
+const voiceDemoControls = document.getElementById('voiceDemoControls');
+const voiceDemoStatus = document.getElementById('voiceDemoStatus');
+const voiceDemoMuteBtn = document.getElementById('voiceDemoMuteBtn');
+const voiceDemoEndBtn = document.getElementById('voiceDemoEndBtn');
+const voiceDemoUnavailable = document.getElementById('voiceDemoUnavailable');
+
+let retellClient = null;
+let activeCall = null;
+let isMuted = false;
+
+function showUnavailable() {
+  voiceDemoIdle.style.display = 'none';
+  voiceDemoControls.style.display = 'none';
+  voiceDemoUnavailable.style.display = 'block';
+}
+
+function resetToIdle() {
+  voiceDemoControls.style.display = 'none';
+  voiceDemoIdle.style.display = 'flex';
+  voiceDemoBtn.disabled = false;
+  voiceDemoBtn.textContent = '🎤 Talk to it live';
+  isMuted = false;
+  voiceDemoMuteBtn.textContent = 'Mute';
+  activeCall = null;
+}
+
+async function startVoiceDemo() {
+  voiceDemoBtn.disabled = true;
+  voiceDemoBtn.textContent = 'Connecting…';
+
+  let data;
+  try {
+    const res = await fetch('/api/demo/voice-agent', { method: 'POST' });
+    data = await res.json();
+  } catch (err) {
+    console.error('Voice demo: failed to reach server:', err);
+    return showUnavailable();
+  }
+
+  if (!data || data.demoMode || !data.agentId || !data.publicKey) {
+    return showUnavailable();
+  }
+
+  try {
+    if (!retellClient) {
+      retellClient = new RetellClient({ key: data.publicKey });
+    }
+
+    activeCall = retellClient.createWebCall({
+      agent_id: data.agentId,
+      hooks: {
+        onStatus: (status) => {
+          if (status === 'live') {
+            voiceDemoIdle.style.display = 'none';
+            voiceDemoControls.style.display = 'flex';
+            voiceDemoStatus.textContent = '🔴 Live — say hello!';
+          } else if (status === 'connecting') {
+            voiceDemoStatus.textContent = 'Connecting…';
+          }
+        },
+        onEnd: () => resetToIdle(),
+        onError: (err) => {
+          console.error('Voice demo call error:', err);
+          resetToIdle();
+        },
+      },
+    });
+
+    await activeCall.ready;
+  } catch (err) {
+    console.error('Voice demo: could not start call (mic permission or connection issue):', err);
+    resetToIdle();
+  }
+}
+
+voiceDemoBtn.addEventListener('click', startVoiceDemo);
+
+voiceDemoMuteBtn.addEventListener('click', () => {
+  if (!activeCall) return;
+  isMuted = !isMuted;
+  if (isMuted) {
+    activeCall.mute();
+    voiceDemoMuteBtn.textContent = 'Unmute';
+  } else {
+    activeCall.unmute();
+    voiceDemoMuteBtn.textContent = 'Mute';
+  }
+});
+
+voiceDemoEndBtn.addEventListener('click', async () => {
+  if (activeCall) {
+    try { await activeCall.end(); } catch (err) { /* already ending/ended */ }
+  }
+  resetToIdle();
+});
+</script>
+
+
 </html>
