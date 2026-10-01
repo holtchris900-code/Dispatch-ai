@@ -1003,6 +1003,49 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, result);
     }
 
+    // --- Live voice demo: browser "talk to it live" button on the landing --
+    // page. Creates ONE persistent Retell agent for the same fixed demo
+    // persona as the text-chat demo above (DEMO_SYSTEM_PROMPT -- "Summit Air
+    // & Plumbing"), the very first time anyone tries the voice demo, then
+    // reuses that same agent forever -- cached via db.getDemoAgent /
+    // db.saveDemoAgent, same simple-JSON-file pattern as everything else in
+    // this app. No booking tools or webhook are attached (there's no real
+    // business or calendar behind this demo), and no phone number is bought
+    // -- the browser talks to this agent entirely over WebRTC using Retell's
+    // public-key web-call flow (see public/index.html), so this route only
+    // ever hands back an agent_id and the public key, never a secret.
+    //
+    // Requires a RETELL_PUBLIC_KEY environment variable (created in Retell's
+    // dashboard under API Keys -> Public Keys, restricted to this site's own
+    // domain -- see LAUNCH_CHECKLIST.md). Until that's set, this returns
+    // { demoMode: true } and the landing page shows the text-chat demo only.
+    if (pathname === '/api/demo/voice-agent' && req.method === 'POST') {
+      const publicKey = process.env.RETELL_PUBLIC_KEY;
+      if (!publicKey) {
+        return sendJson(res, 200, { demoMode: true });
+      }
+
+      const cached = db.getDemoAgent();
+      if (cached && cached.agentId) {
+        return sendJson(res, 200, { agentId: cached.agentId, publicKey });
+      }
+
+      const created = await createPhoneAgent({
+        companyName: 'Dispatch AI (live voice demo)',
+        script: DEMO_SYSTEM_PROMPT,
+      });
+
+      if (created.demoMode) {
+        return sendJson(res, 200, { demoMode: true });
+      }
+
+      db.saveDemoAgent({
+        llmId: created.llmId,
+        agentId: created.agentId,
+        createdAt: new Date().toISOString(),
+      });
+      return sendJson(res, 200, { agentId: created.agentId, publicKey });
+    }
 
     // --- Help chat widget on the intake form (/onboard) -------------------
     // Separate from /api/chat (the landing-page demo, which role-plays as a
