@@ -87,7 +87,41 @@
     </div>
   </section>
 
-  <section class="section-tight">
+    <section class="calc-section">
+    <div class="calc-card">
+      <div class="calc-header">
+        <h2>What are missed calls costing you right now?</h2>
+        <p class="lead">Drag the sliders to match your business — the numbers update instantly.</p>
+      </div>
+      <div class="calc-grid">
+        <div class="calc-inputs">
+          <div class="calc-field">
+            <div class="calc-field-top">
+              <label for="calcMissedCalls">Missed calls per week</label>
+              <span class="calc-field-value"><span id="calcMissedCallsValue">5</span></span>
+            </div>
+            <input type="range" id="calcMissedCalls" min="1" max="30" value="5" step="1">
+          </div>
+          <div class="calc-field">
+            <div class="calc-field-top">
+              <label for="calcJobValue">Average job value</label>
+              <span class="calc-field-value">£<span id="calcJobValueValue">150</span></span>
+            </div>
+            <input type="range" id="calcJobValue" min="50" max="1000" value="150" step="10">
+          </div>
+          <p class="calc-assumption">Based on roughly 1 in 3 missed calls turning into a paying job if answered — a conservative estimate for home service businesses.</p>
+        </div>
+        <div class="calc-result">
+          <div class="calc-result-label">Estimated revenue walking out the door</div>
+          <div class="calc-result-amount"><span class="calc-result-currency">£</span><span id="calcMonthlyLoss">1,083</span><span class="calc-result-period">/month</span></div>
+          <div class="calc-result-annual">£<span id="calcAnnualLoss">13,000</span> per year</div>
+          <a class="btn btn-primary btn-block" href="/onboard">Stop losing this revenue</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<section class="section-tight">
     <h2>Live in three steps</h2>
     <p class="lead">No developers, no long onboarding calls — just answer some questions about how your business runs.</p>
     <div class="steps">
