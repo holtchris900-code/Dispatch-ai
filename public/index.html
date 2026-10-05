@@ -349,6 +349,38 @@ async function sendMessage() {
 
 sendBtn.addEventListener('click', sendMessage);
 chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
+const calcMissedCalls = document.getElementById('calcMissedCalls');
+const calcJobValue = document.getElementById('calcJobValue');
+const calcMissedCallsValue = document.getElementById('calcMissedCallsValue');
+const calcJobValueValue = document.getElementById('calcJobValueValue');
+const calcMonthlyLoss = document.getElementById('calcMonthlyLoss');
+const calcAnnualLoss = document.getElementById('calcAnnualLoss');
+
+const CALC_CONVERSION_RATE = 1 / 3;
+const CALC_WEEKS_PER_MONTH = 4.33;
+
+function formatCalcNumber(n) {
+  return Math.round(n).toLocaleString('en-GB');
+}
+
+function updateCalculator() {
+  const missedCalls = Number(calcMissedCalls.value);
+  const jobValue = Number(calcJobValue.value);
+
+  calcMissedCallsValue.textContent = missedCalls;
+  calcJobValueValue.textContent = formatCalcNumber(jobValue);
+
+  const monthlyLoss = missedCalls * CALC_WEEKS_PER_MONTH * CALC_CONVERSION_RATE * jobValue;
+  const annualLoss = monthlyLoss * 12;
+
+  calcMonthlyLoss.textContent = formatCalcNumber(monthlyLoss);
+  calcAnnualLoss.textContent = formatCalcNumber(annualLoss);
+}
+
+calcMissedCalls.addEventListener('input', updateCalculator);
+calcJobValue.addEventListener('input', updateCalculator);
+updateCalculator();
+
 </script>
 <script type="module">
 // Live, in-browser "talk to it now" voice demo -- lets a visitor talk to a
