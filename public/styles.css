@@ -322,3 +322,50 @@ legend { font-weight: 700; font-size: 15px; padding: 0 6px; }
   display: none; font-size: 12.5px; color: var(--ink-soft); background: var(--surface);
   border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; margin-bottom: 14px;
 }
+
+/* Missed-call revenue calculator (sits right under the hero) */
+.calc-section { padding: 0 0 56px; }
+.calc-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
+  padding: 34px 36px; box-shadow: var(--shadow-sm);
+}
+.calc-header { text-align: center; margin-bottom: 28px; }
+.calc-header h2 { font-size: 26px; margin: 0 0 8px; }
+.calc-header .lead { margin: 0 auto; }
+.calc-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 36px; align-items: center; }
+.calc-field { margin-bottom: 22px; }
+.calc-field-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.calc-field label { font-size: 14px; font-weight: 600; color: var(--ink); }
+.calc-field-value { font-size: 15px; font-weight: 700; color: var(--accent-dark); font-family: "Plus Jakarta Sans", sans-serif; }
+.calc-field input[type="range"] {
+  width: 100%; -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px;
+  background: var(--accent-line); outline: none; cursor: pointer;
+}
+.calc-field input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent); border: 3px solid white; box-shadow: var(--shadow-sm); cursor: pointer;
+}
+.calc-field input[type="range"]::-moz-range-thumb {
+  width: 20px; height: 20px; border-radius: 50%; background: var(--accent); border: 3px solid white;
+  box-shadow: var(--shadow-sm); cursor: pointer;
+}
+.calc-assumption { font-size: 12.5px; color: var(--ink-faint); margin: 18px 0 0; line-height: 1.5; }
+.calc-result {
+  background: linear-gradient(135deg, var(--accent-dark), var(--accent)); border-radius: var(--radius-md);
+  padding: 28px 26px; text-align: center; color: white; box-shadow: var(--shadow-md);
+}
+.calc-result-label { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.8); margin-bottom: 10px; }
+.calc-result-amount {
+  font-family: "Plus Jakarta Sans", sans-serif; font-weight: 800; font-size: 40px; line-height: 1;
+  margin-bottom: 6px;
+}
+.calc-result-currency { font-size: 24px; vertical-align: top; margin-right: 2px; }
+.calc-result-period { font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.75); margin-left: 4px; }
+.calc-result-annual { font-size: 13.5px; color: rgba(255,255,255,0.85); margin-bottom: 22px; }
+.calc-result .btn-primary { background: white; color: var(--accent-dark); box-shadow: 0 8px 20px -8px rgba(0,0,0,0.35); }
+.calc-result .btn-primary:hover { background: #f3f4f6; }
+
+@media (max-width: 860px) {
+  .calc-grid { grid-template-columns: 1fr; }
+  .calc-card { padding: 26px 22px; }
+}
