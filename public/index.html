@@ -175,7 +175,11 @@
     <p class="lead">No enterprise sales calls, no seat minimums — just a flat monthly price built for one-location home service businesses. Billed monthly in GBP, cancel anytime.</p>
     <p class="price-anchor">A part-time receptionist typically costs £1,500+/month, and traditional phone-answering services often charge £150–£400/month for business-hours-only coverage. Dispatch AI starts at £119/month for round-the-clock coverage.</p>
     <p class="trial-note">Every plan starts with a <b>14-day free trial</b> — you're not charged until it ends, and you can cancel any time before that with nothing owed.</p>
-    <div class="pricing-grid">
+        <div class="billing-toggle" id="billingToggle">
+      <button class="billing-toggle-btn active" id="billingMonthlyBtn" type="button">Monthly</button>
+      <button class="billing-toggle-btn" id="billingAnnualBtn" type="button">Annual <span class="billing-save-badge">Save 15%</span></button>
+    </div>
+<div class="pricing-grid">
       <div class="price-card">
         <h3>Starter</h3>
         <p class="price-desc">For a single line that just needs to stop missing calls.</p>
@@ -217,7 +221,11 @@
         <a class="btn btn-secondary btn-block" href="/onboard">Get in touch</a>
       </div>
     </div>
-    <p class="pricing-footnote">Overage minutes beyond your plan's allowance are billed at £0.30–£0.35/minute. No long-term contracts — cancel your subscription any time and billing stops immediately.</p>
+        <div class="guarantee-badge">
+      <span class="guarantee-icon">🛡️</span>
+      <p><b>Try it free for 14 days.</b> If Dispatch AI isn't pulling its weight in your first 30 days after that, tell us and we'll refund you in full — no questions asked.</p>
+    </div>
+<p class="pricing-footnote">Overage minutes beyond your plan's allowance are billed at £0.30–£0.35/minute. No long-term contracts — cancel your subscription any time and billing stops immediately.</p>
   </section>
 
   <section class="section">
@@ -244,6 +252,11 @@
         <summary>Can we cancel or switch back easily?</summary>
         <p>Yes — cancel any time from your own self-service account, no phone call or long-term contract required. Cancel during your 14-day free trial and you're never charged at all; cancel after that and billing stops immediately, with access until the end of what you already paid for.</p>
       </details>
+      <details class="faq-item">
+        <summary>What if I'm not happy after my trial?</summary>
+        <p>You're covered by a 30-day money-back guarantee: if it's not working out within 30 days of your first charge, tell us and we'll refund that payment in full, no questions asked. After that, cancelling any time simply stops future billing.</p>
+      </details>
+
       <details class="faq-item">
         <summary>Can we review what it will say before it goes live?</summary>
         <p>Always. Every script is drafted from your own answers, and you read, edit, and approve it before it's ever used on a real call or chat — the same review applies any time you edit it yourself later.</p>
@@ -380,6 +393,41 @@ function updateCalculator() {
 calcMissedCalls.addEventListener('input', updateCalculator);
 calcJobValue.addEventListener('input', updateCalculator);
 updateCalculator();
+const billingMonthlyBtn = document.getElementById('billingMonthlyBtn');
+const billingAnnualBtn = document.getElementById('billingAnnualBtn');
+const starterCard = document.querySelector('.pricing-grid .price-card:nth-child(1)');
+const growthCard = document.querySelector('.pricing-grid .price-card.featured');
+const starterPriceEl = starterCard.querySelector('.amount');
+const starterPeriodEl = starterCard.querySelector('.period');
+const growthPriceEl = growthCard.querySelector('.amount');
+const growthPeriodEl = growthCard.querySelector('.period');
+
+const ANNUAL_DISCOUNT = 0.15;
+const STARTER_MONTHLY = 119;
+const GROWTH_MONTHLY = 229;
+
+function setBillingPeriod(isAnnual) {
+  billingMonthlyBtn.classList.toggle('active', !isAnnual);
+  billingAnnualBtn.classList.toggle('active', isAnnual);
+
+  if (isAnnual) {
+    const starterEquiv = Math.round(STARTER_MONTHLY * (1 - ANNUAL_DISCOUNT));
+    const growthEquiv = Math.round(GROWTH_MONTHLY * (1 - ANNUAL_DISCOUNT));
+    starterPriceEl.textContent = `£${starterEquiv}`;
+    starterPeriodEl.textContent = '/ month, billed annually';
+    growthPriceEl.textContent = `£${growthEquiv}`;
+    growthPeriodEl.textContent = '/ month, billed annually';
+  } else {
+    starterPriceEl.textContent = `£${STARTER_MONTHLY}`;
+    starterPeriodEl.textContent = '/ month';
+    growthPriceEl.textContent = `£${GROWTH_MONTHLY}`;
+    growthPeriodEl.textContent = '/ month';
+  }
+}
+
+billingMonthlyBtn.addEventListener('click', () => setBillingPeriod(false));
+billingAnnualBtn.addEventListener('click', () => setBillingPeriod(true));
+
 
 </script>
 <script type="module">
