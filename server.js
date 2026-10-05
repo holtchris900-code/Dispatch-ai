@@ -2141,6 +2141,41 @@ const server = http.createServer(async (req, res) => {
       });
       return sendJson(res, 200, result);
     }
+    // Lets a brand-new paying customer get straight into their self-service
+    // dashboard right from the Stripe success page, using only the
+    // session_id Stripe put in the redirect URL -- no email round-trip, no
+    // separate login step first. Public for the same reason
+    // /api/portal-session is just above: Stripe's own redirect can't carry
+    // the dashboard's Basic Auth header, and this only ever reveals a link
+    // tied to the specific checkout session that was just completed.
+    if (pathname === '/api/success-portal-link' && req.method === 'POST') {
+      const { sessionId } = await readBody(req);
+      if (!sessionId) return sendJson(res, 400, { error: 'sessionId is required' });
+
+      const baseUrl = `${url.protocol}//${url.host}`;
+      const { demoMode, session } = await getCheckoutSession(sessionId);
+      if (demoMode) {
+        return sendJson(res, 200, {
+          demoMode: true,
+          message: 'STRIPE_SECRET_KEY is not set yet -- the self-service dashboard needs it configured first.',
+        });
+      }
+      if (!session || !session.client_reference_id) {
+        return sendJson(res, 404, { error: 'checkout session not found' });
+      }
+
+      let clientRecord = db.getClient(session.client_reference_id);
+      if (!clientRecord) {
+        return sendJson(res, 404, { error: 'client not found' });
+      }
+
+      if (!clientRecord.clientPortalToken) {
+        clientRecord = db.updateClient(clientRecord.id, { clientPortalToken: crypto.randomBytes(24).toString('hex') });
+      }
+
+      return sendJson(res, 200, { url: `${baseUrl}/client-portal.html?token=${clientRecord.clientPortalToken}` });
+    }
+
 
     // Starts the Google OAuth flow for one paying client, so their AI widget
     // can check real availability and create real appointments on their own
