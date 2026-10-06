@@ -91,6 +91,12 @@
           <h2>Past customers &amp; repeat-work outreach</h2>
           <p class="section-hint">Upload your past customers there, and we'll draft a friendly reminder once someone's due for their next service -- you review and approve before anything sends.</p>
           <button class="btn btn-secondary" id="pastCustomersBtn">Open my customer list</button>
+          <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--line);">
+            <label style="display:block; font-size:12.5px; font-weight:600; margin-bottom:6px;">Google review link (optional -- included in review-request texts)</label>
+            <input type="text" id="reviewLinkInput" placeholder="https://g.page/r/..." style="width:100%; padding:8px; border-radius:6px; border:1px solid var(--line); font-size:13px; margin-bottom:8px;" />
+            <button class="btn btn-secondary" id="saveReviewLinkBtn" style="font-size:12.5px; padding:8px 14px;">Save review link</button>
+            <div id="reviewLinkResult" style="margin-top:8px; font-size:12.5px; display:none;"></div>
+          </div>
         </div>
 
         <div class="section-block">
@@ -204,6 +210,7 @@ function render(data) {
   document.getElementById('scriptBox').value = data.script || '';
 
   document.getElementById('manageBillingBtn').style.display = data.hasStripeCustomer ? 'inline-flex' : 'none';
+  document.getElementById('reviewLinkInput').value = data.reviewLink || '';
 
   const widgetSnippet = '<script src="' + window.location.origin + '/widget.js" data-client-id="' + data.id +
     '" data-company-name="' + escapeAttr(data.companyName) + '" data-label="Chat with us"><' + '/script>';
@@ -453,6 +460,18 @@ document.getElementById('refreshConvosBtn').addEventListener('click', load);
 document.getElementById('pastCustomersBtn').addEventListener('click', async () => {
   const data = await api('/customer-portal-link', { method: 'POST' });
   if (data.url) window.open(data.url, '_blank');
+});
+document.getElementById('saveReviewLinkBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('saveReviewLinkBtn');
+  const resultBox = document.getElementById('reviewLinkResult');
+  const reviewLink = document.getElementById('reviewLinkInput').value;
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  await api('/review-link', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reviewLink }) });
+  resultBox.style.display = 'block';
+  resultBox.innerHTML = '<span style="color:#166534;">Saved.</span>';
+  btn.disabled = false;
+  btn.textContent = 'Save review link';
 });
 
 document.getElementById('regenerateBtn').addEventListener('click', async () => {
