@@ -27,6 +27,8 @@ const googleCalendar = require('./lib/googleCalendarClient');
 
 const { parseCsv } = require('./lib/csv');
 const { buildPastCustomerOutreachPrompt, parsePastCustomerOutreach, monthsSince } = require('./lib/pastCustomerOutreachPrompt');
+const { buildReviewRequestPrompt } = require('./lib/reviewRequestPrompt');
+
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -169,6 +171,7 @@ function clientPortalView(clientRecord) {
     googleCalendarNeedsReconnect: !!clientRecord.googleCalendarNeedsReconnect,
     usageMinutesThisPeriod: clientRecord.usageMinutesThisPeriod || 0,
     pastCustomerPortalToken: clientRecord.pastCustomerPortalToken || null,
+    reviewLink: clientRecord.reviewLink || null,
     hostedPageEnabled: !!clientRecord.hostedPageEnabled,
     hostedPageSlug: clientRecord.hostedPageSlug || null,
   };
@@ -1233,6 +1236,39 @@ const server = http.createServer(async (req, res) => {
         outreachApprovedAt: new Date().toISOString(),
       });
       return sendJson(res, 200, updated);
+    // Lets the client manually ask for a review for one specific past
+    // customer (unlike the time-based "next service" reminder above, this
+    // is always client-initiated -- there's no "due date" for asking for a
+    // review, just "the job's done, ask now"). Writes into the exact same
+    // outreachSubject/outreachBody/outreachStatus fields as the reminder
+    // above so the existing edit/approve/send UI and routes work unchanged
+    // for this too -- it's just a different kind of message going into the
+    // same slot. Works even without an email on file, since the send route
+    // (see outreach/send below) already falls back to a text message via
+    // pc.phone when there's no email.
+    const portalReviewRequestDraftMatch = pathname.match(/^\/api\/customer-portal\/([^/]+)\/customers\/([^/]+)\/review-request\/draft$/);
+    if (portalReviewRequestDraftMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPastCustomerPortalToken(portalReviewRequestDraftMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+      const pc = db.getPastCustomer(portalReviewRequestDraftMatch[2]);
+      if (!pc || pc.clientId !== clientRecord.id) return sendJson(res, 404, { error: 'not found' });
+
+      const { system, messages } = buildReviewRequestPrompt(clientRecord, pc);
+      const result = await callClaude({ system, messages, maxTokens: 300 });
+      if (result.demoMode) {
+        return sendJson(res, 200, result);
+      }
+
+      const draft = parsePastCustomerOutreach(result.text);
+      const updated = db.updatePastCustomer(pc.id, {
+        outreachSubject: draft.subject,
+        outreachBody: draft.body,
+        outreachStatus: draft.body ? 'drafted' : 'none',
+        outreachDraftedAt: new Date().toISOString(),
+      });
+      return sendJson(res, 200, { pastCustomer: updated });
+    }
+
     }
 
     // Actually sends the approved reminder, via the same Resend integration
@@ -1590,6 +1626,15 @@ const server = http.createServer(async (req, res) => {
       });
       return sendJson(res, 200, clientPortalView(updated));
     }
+    const clientPortalReviewLinkMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/review-link$/);
+    if (clientPortalReviewLinkMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPortalToken(clientPortalReviewLinkMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+      const { reviewLink } = await readBody(req);
+      const updated = db.updateClient(clientRecord.id, { reviewLink: reviewLink || null });
+      return sendJson(res, 200, clientPortalView(updated));
+    }
+
 
     // Generates (or reuses) this client's own past-customer portal link --
     // same token, same page (public/customer-portal.html) the founder can
