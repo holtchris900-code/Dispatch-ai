@@ -22,6 +22,7 @@ const { sendEmail } = require('./lib/emailClient');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession, createInvoiceItem } = require('./lib/stripeClient');
 const { createPhoneAgent, updatePhoneAgentTools, retellWebhookToken } = require('./lib/retellClient');
 const { provisionPhoneNumber } = require('./lib/phoneProvisioning');
+const { sendSms } = require('./lib/telnyxClient');
 const googleCalendar = require('./lib/googleCalendarClient');
 
 const { parseCsv } = require('./lib/csv');
@@ -1245,6 +1246,21 @@ const server = http.createServer(async (req, res) => {
 
       if (pc.outreachStatus !== 'approved') {
         return sendJson(res, 400, { error: 'Approve the draft before sending it.' });
+      }
+      if (!pc.email && pc.phone && clientRecord.retellPhoneNumber) {
+        const smsResult = await sendSms({
+          to: pc.phone,
+          from: clientRecord.retellPhoneNumber,
+          text: pc.outreachBody || '',
+        });
+        if (smsResult.demoMode || !smsResult.success) {
+          return sendJson(res, 200, smsResult);
+        }
+        const updatedBySms = db.updatePastCustomer(pc.id, {
+          outreachStatus: 'sent',
+          outreachSentAt: new Date().toISOString(),
+        });
+        return sendJson(res, 200, { ...smsResult, pastCustomer: updatedBySms });
       }
       if (!pc.email) {
         return sendJson(res, 400, { error: 'No email address on file for this customer.' });
