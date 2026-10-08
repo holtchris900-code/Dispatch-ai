@@ -155,6 +155,7 @@ function renderCustomers(customers) {
         </div>
         ${meta ? `<div style="font-size:12.5px; color:var(--ink-soft); margin-top:4px;">${meta}</div>` : ''}
         <div style="margin-top:8px;"><button class="btn btn-secondary ask-review-btn" data-id="${c.id}" style="font-size:12px; padding:6px 12px;">✍️ Ask for a review</button></div>
+        <div style="margin-top:6px;"><button class="btn btn-primary auto-review-btn" data-id="${c.id}" style="font-size:12px; padding:6px 12px;">✅ Job done — send review request now</button></div>
         ${actionHtml}
       </div>
     `;
@@ -229,6 +230,25 @@ function renderCustomers(customers) {
       loadCustomers();
     });
   });
+  customerList.querySelectorAll('.auto-review-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      try {
+        await fetch(`/api/customer-portal/${token}/customers/${id}/review-request/draft`, { method: 'POST' });
+        await fetch(`/api/customer-portal/${token}/customers/${id}/outreach/approve`, { method: 'POST' });
+        await fetch(`/api/customer-portal/${token}/customers/${id}/outreach/send`, { method: 'POST' });
+      } catch (err) {
+        // fall through -- loadCustomers() below shows whatever state this
+        // customer is actually in now (e.g. still "approved" with a Send
+        // now button if the text itself failed to go out, so it can be
+        // retried or edited by hand instead of silently disappearing).
+      }
+      loadCustomers();
+    });
+  });
+
 }
 
 document.getElementById('refreshBtn').addEventListener('click', loadCustomers);
