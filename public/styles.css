@@ -400,3 +400,77 @@ legend { font-weight: 700; font-size: 15px; padding: 0 6px; }
 @media (max-width: 860px) {
   .guarantee-badge { flex-direction: column; gap: 10px; }
 }
+/* --- Visual polish pass: scroll-reveal, CTA pulse, animated FAQ, nav
+   shrink-on-scroll, hero typing indicator, dark mode -- all respecting
+   prefers-reduced-motion. See the matching JS appended to index.html's
+   first <script> block for the reveal/count-up/typing-indicator logic
+   this CSS supports. */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Scroll-reveal (only takes effect once body.js-reveal-ready is added by
+   JS, so a visitor with JavaScript off never has content stuck hidden). */
+body.js-reveal-ready .reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+body.js-reveal-ready .reveal.is-visible { opacity: 1; transform: translateY(0); }
+.price-card.reveal { transition: opacity 0.6s ease, transform 0.6s ease, box-shadow 0.15s ease; }
+
+/* Nav bar: slightly condenses once the page has scrolled */
+header { transition: padding 0.2s ease; }
+header.scrolled { padding: 11px 0; }
+
+/* Idle pulse ring on the hero's "Talk to it live" button, so it draws the
+   eye without being an obnoxious flashing banner. */
+@keyframes cta-pulse-ring {
+  0% { box-shadow: 0 8px 20px -8px rgba(20,104,86,0.55), 0 0 0 0 rgba(20,104,86,0.45); }
+  70% { box-shadow: 0 8px 20px -8px rgba(20,104,86,0.55), 0 0 0 10px rgba(20,104,86,0); }
+  100% { box-shadow: 0 8px 20px -8px rgba(20,104,86,0.55), 0 0 0 0 rgba(20,104,86,0); }
+}
+#voiceDemoBtn { animation: cta-pulse-ring 2.6s ease-out infinite; }
+
+/* Animated FAQ accordion open (native <details>/<summary> still handles
+   the actual expand/collapse and keyboard support -- this just makes the
+   answer fade/slide in instead of snapping into place). */
+@keyframes faq-open { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+.faq-item[open] p { animation: faq-open 0.25s ease; }
+
+/* Hero chat demo: brief "typing" indicator + fade-in for the greeting
+   bubble (see the JS in index.html's first <script> block). */
+.typing-indicator { display: inline-flex; gap: 4px; padding: 14px 16px; }
+.typing-indicator span {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent-dark); opacity: 0.4;
+  animation: typing-bounce 1s ease-in-out infinite;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.15s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-bounce { 0%, 60%, 100% { opacity: 0.4; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+@keyframes chat-bubble-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.bubble-enter { animation: chat-bubble-in 0.3s ease; }
+
+/* Dark mode -- follows the visitor's system setting automatically, no
+   toggle button. Only the neutral tones flip; the teal brand accent stays
+   the same in both themes. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #e8edf1;
+    --ink-soft: #a8b2bd;
+    --ink-faint: #76818d;
+    --paper: #151a20;
+    --surface: #1b2128;
+    --surface-alt: #202830;
+    --line: #2a323b;
+    --accent-soft: #16302a;
+    --accent-line: #1f4a3e;
+  }
+}
+
