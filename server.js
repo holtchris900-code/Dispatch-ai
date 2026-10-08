@@ -268,6 +268,26 @@ const FREE_TRIAL_DAYS = 14;
 // with it already being the better per-minute deal on its base price too.
 const PLAN_OVERAGE_RATE_GBP = { starter: 0.35, growth: 0.3 };
 const USAGE_WARNING_THRESHOLD = 0.8;
+// Disconnection reasons that mean the call genuinely never got through to
+// a conversation with the AI -- Retell's documented "not connected" and
+// "error" categories (see https://docs.retellai.com/reliability/debug-call-disconnect),
+// as opposed to e.g. "user_hangup" or "agent_hangup", which mean a real
+// conversation happened and just ended normally. Deliberately conservative:
+// only these clearly-failed cases trigger the missed-call text-back below,
+// so a customer never gets an unnecessary "sorry we missed you" text after
+// a call that actually went fine.
+const MISSED_CALL_DISCONNECT_REASONS = new Set([
+  'dial_busy', 'dial_failed', 'dial_no_answer', 'invalid_destination',
+  'telephony_provider_permission_denied', 'telephony_provider_unavailable',
+  'sip_routing_error', 'marked_as_spam', 'network_blocked', 'user_declined',
+  'concurrency_limit_reached', 'no_valid_payment', 'credit_exhausted',
+  'budget_reached', 'scam_detected', 'error_llm_websocket_open',
+  'error_llm_websocket_lost_connection', 'error_llm_websocket_runtime',
+  'error_llm_websocket_corrupt_payload', 'error_no_audio_received',
+  'error_asr', 'error_retell', 'error_unknown', 'error_user_not_joined',
+  'registered_call_timeout',
+]);
+
 
 async function recordUsageMinutes(clientRecord, minutes) {
   const plan = clientRecord.plan;
@@ -2390,6 +2410,31 @@ const server = http.createServer(async (req, res) => {
         if (clientRecord && minutes > 0) {
           await recordUsageMinutes(clientRecord, minutes);
         }
+        // Missed-call text-back: if this specific call never actually got
+        // through to a conversation (see MISSED_CALL_DISCONNECT_REASONS
+        // above), and this client has their own number to text from, send
+        // an instant "sorry we missed you" text to the caller -- so a call
+        // that genuinely failed doesn't just go cold. Never blocks or
+        // delays the webhook response if the text itself fails to send.
+        if (
+          call.direction === 'inbound' &&
+          call.from_number &&
+          clientRecord &&
+          clientRecord.retellPhoneNumber &&
+          MISSED_CALL_DISCONNECT_REASONS.has(call.disconnection_reason)
+        ) {
+          const companyName = (clientRecord.intake && clientRecord.intake.companyName) || 'us';
+          try {
+            await sendSms({
+              to: call.from_number,
+              from: clientRecord.retellPhoneNumber,
+              text: `Sorry we missed you! This is ${companyName} -- reply here or call us back and we'll help right away.`,
+            });
+          } catch (err) {
+            console.error('Missed-call text-back failed:', err.message || err);
+          }
+        }
+
       }
 
         return sendJson(res, 200, { received: true });
