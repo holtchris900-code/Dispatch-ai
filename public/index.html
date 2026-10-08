@@ -431,6 +431,83 @@ function setBillingPeriod(isAnnual) {
 
 billingMonthlyBtn.addEventListener('click', () => setBillingPeriod(false));
 billingAnnualBtn.addEventListener('click', () => setBillingPeriod(true));
+// --- Visual polish: scroll-reveal, CTA pulse support, hero typing intro,
+// and a nav bar that condenses slightly once scrolled -- all skip their
+// animated state entirely when the visitor's system asks for reduced
+// motion, and the scroll-reveal is safe with JavaScript off too (nothing
+// is hidden until this script actually runs and adds js-reveal-ready).
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const siteHeader = document.querySelector('header');
+function updateHeaderScrollState() {
+  siteHeader.classList.toggle('scrolled', window.scrollY > 10);
+}
+window.addEventListener('scroll', updateHeaderScrollState, { passive: true });
+updateHeaderScrollState();
+
+document.body.classList.add('js-reveal-ready');
+const revealGroups = document.querySelectorAll('.steps, .feature-grid, .pricing-grid, .faq-list');
+revealGroups.forEach((group) => {
+  Array.from(group.children).forEach((child, i) => {
+    child.classList.add('reveal');
+    child.style.transitionDelay = prefersReducedMotion ? '0s' : `${i * 80}ms`;
+  });
+});
+document.querySelectorAll('.calc-card, .cta-banner, .guarantee-badge').forEach((el) => el.classList.add('reveal'));
+
+if (prefersReducedMotion || !('IntersectionObserver' in window)) {
+  document.querySelectorAll('.reveal').forEach((el) => el.classList.add('is-visible'));
+} else {
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.reveal').forEach((el) => revealObserver.observe(el));
+}
+
+function animateCountUp(el, endValue) {
+  const duration = 600;
+  const start = performance.now();
+  function tick(now) {
+    const progress = Math.min((now - start) / duration, 1);
+    el.textContent = formatCalcNumber(endValue * progress);
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+const calcCardEl = document.querySelector('.calc-card');
+if (calcCardEl && !prefersReducedMotion && 'IntersectionObserver' in window) {
+  const calcObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        animateCountUp(calcMonthlyLoss, Number(calcMonthlyLoss.textContent.replace(/,/g, '')));
+        animateCountUp(calcAnnualLoss, Number(calcAnnualLoss.textContent.replace(/,/g, '')));
+        calcObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.4 });
+  calcObserver.observe(calcCardEl);
+}
+
+(function playHeroTypingIntro() {
+  const firstBubble = chatLog.querySelector('.msg.ai');
+  if (!firstBubble || prefersReducedMotion) return;
+  firstBubble.style.display = 'none';
+  const indicator = document.createElement('div');
+  indicator.className = 'msg ai';
+  indicator.innerHTML = '<div class="bubble typing-indicator"><span></span><span></span><span></span></div>';
+  chatLog.insertBefore(indicator, firstBubble);
+  setTimeout(() => {
+    indicator.remove();
+    firstBubble.style.display = '';
+    firstBubble.classList.add('bubble-enter');
+  }, 900);
+})();
+
 
 
 </script>
