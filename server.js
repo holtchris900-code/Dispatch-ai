@@ -1446,6 +1446,18 @@ const server = http.createServer(async (req, res) => {
       const conversations = await getClassifiedConversations(clientRecord);
       return sendJson(res, 200, { ...clientPortalView(clientRecord), conversations });
     }
+    // Analytics data for the client-portal dashboard -- kept as its own
+    // route rather than folded into /data above, so that route's existing
+    // shape never has to change. Same "paid or cancelled clients only" gate
+    // as /data above.
+    const clientPortalCallsMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/calls$/);
+    if (clientPortalCallsMatch && req.method === 'GET') {
+      const clientRecord = db.getClientByPortalToken(clientPortalCallsMatch[1]);
+      if (!clientRecord || (clientRecord.status !== 'paid' && clientRecord.status !== 'cancelled')) {
+        return sendJson(res, 404, { error: 'not found' });
+      }
+      return sendJson(res, 200, { calls: db.listCallsForClient(clientRecord.id) });
+    }
 
     // Lets a client edit their own AI agent's script -- but unlike the
     // founder's own script-editing route (which saves directly, since it's
@@ -2433,6 +2445,20 @@ const server = http.createServer(async (req, res) => {
           } catch (err) {
             console.error('Missed-call text-back failed:', err.message || err);
           }
+        }
+        // Log this call for the client-portal analytics dashboard --
+        // deliberately a separate, later check rather than touching the
+        // missed-call text-back block above, so every real call gets
+        // logged here (not just missed ones), while that block above stays
+        // untouched.
+        if (clientRecord) {
+          db.recordCall({
+            clientId: clientRecord.id,
+            startedAt: call.start_timestamp ? new Date(call.start_timestamp).toISOString() : new Date().toISOString(),
+            durationMinutes: minutes,
+            disconnectionReason: call.disconnection_reason || null,
+            missedCall: MISSED_CALL_DISCONNECT_REASONS.has(call.disconnection_reason),
+          });
         }
 
       }
