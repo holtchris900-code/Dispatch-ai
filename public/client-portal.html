@@ -47,6 +47,11 @@
         <div id="pendingEditNote" style="display:none; margin-top:20px; padding:14px; border-radius:10px; background:#eff6ff; border:1px solid #bfdbfe; font-size:13.5px; color:#1e40af;">
           📝 Your last script edit is awaiting a quick review before it goes live -- you'll keep the current script until then.
         </div>
+        <div class="section-block" id="analyticsSection">
+          <h2>How your AI is doing</h2>
+          <p class="section-hint">Call &amp; chat volume over the last 14 days, how many turn into a booking, and how often a call needed the missed-call text-back.</p>
+          <div id="analyticsBox"></div>
+        </div>
 
         <div class="section-block">
           <h2>Your AI agent's script</h2>
@@ -177,6 +182,7 @@ async function load() {
       return;
     }
     const data = await res.json();
+    data.calls = await api('/calls').then((r) => r.calls || []).catch(() => []);
     currentData = data;
     render(data);
     loadingState.style.display = 'none';
@@ -221,6 +227,7 @@ function render(data) {
   renderPhone(data);
   renderCalendar(data);
   renderUsage(data);
+  renderAnalytics(data);
 }
 
 function renderHostedPage(data) {
@@ -321,6 +328,161 @@ function renderUsage(data) {
     '<div style="background:#e5e7eb; border-radius:6px; height:8px; overflow:hidden;">' +
     '<div style="width:' + percent + '%; background:' + barColor + '; height:100%;"></div></div>' +
     (overMinutes > 0 ? '<div style="font-size:12.5px; color:#b91c1c; margin-top:4px;">' + overMinutes + ' minute(s) over -- billed automatically.</div>' : '');
+}
+const ANALYTICS_CHART_DAYS = 14;
+const OUTCOME_CHART_META = {
+  booked: { label: 'Booked', color: '#146856' },
+  unbooked_lead: { label: 'Unbooked lead', color: '#b45309' },
+  resolved_question: { label: 'Question answered', color: '#1e40af' },
+  not_reviewed: { label: 'Not reviewed yet', color: '#6b7280' },
+};
+
+function dayKey(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function lastNDayKeys(n) {
+  const keys = [];
+  const now = new Date();
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    keys.push(dayKey(d));
+  }
+  return keys;
+}
+
+// Builds a {dayKey: count} map for one series (e.g. "handled calls",
+// "missed calls") over a fixed set of day keys, so every day shows up even
+// with zero activity instead of silently skipping it.
+function bucketByDay(items, dateField, dayKeys) {
+  const counts = {};
+  dayKeys.forEach((k) => { counts[k] = 0; });
+  items.forEach((item) => {
+    if (!item[dateField]) return;
+    const k = dayKey(new Date(item[dateField]));
+    if (k in counts) counts[k] += 1;
+  });
+  return counts;
+}
+
+// Draws a small stacked bar chart as inline SVG -- no charting library,
+// consistent with the rest of this project having no build step. Each bar
+// gets a native <title> tooltip with the exact date and count (a lighter
+// hover layer than a full crosshair, but works everywhere with zero JS
+// event wiring). series is an array of { key, color }; counts is an array
+// of per-series {dayKey: count} maps in the same order.
+function stackedBarChartSvg(dayKeys, series, countsBySeries) {
+  const width = 320;
+  const height = 72;
+  const gap = 3;
+  const barWidth = Math.max(2, width / dayKeys.length - gap);
+  const totals = dayKeys.map((k) => series.reduce((sum, s, i) => sum + (countsBySeries[i][k] || 0), 0));
+  const maxTotal = Math.max(1, ...totals);
+  let bars = '';
+  dayKeys.forEach((k, dayIdx) => {
+    const x = dayIdx * (barWidth + gap);
+    const dateLabel = new Date(k + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    let yTop = height - 4;
+    let any = false;
+    series.forEach((s, i) => {
+      const count = countsBySeries[i][k] || 0;
+      if (count <= 0) return;
+      any = true;
+      const segHeight = Math.max(3, (count / maxTotal) * (height - 14));
+      yTop -= segHeight;
+      bars += '<rect x="' + x.toFixed(1) + '" y="' + yTop.toFixed(1) + '" width="' + barWidth.toFixed(1) +
+        '" height="' + segHeight.toFixed(1) + '" rx="2" fill="' + s.color + '"><title>' +
+        dateLabel + ': ' + count + ' ' + s.key + '</title></rect>';
+      yTop -= 2;
+    });
+    if (!any) {
+      bars += '<rect x="' + x.toFixed(1) + '" y="' + (height - 6).toFixed(1) + '" width="' + barWidth.toFixed(1) +
+        '" height="2" rx="1" fill="var(--line)"><title>' + dateLabel + ': 0</title></rect>';
+    }
+  });
+  return '<svg viewBox="0 0 ' + width + ' ' + height + '" style="width:100%; height:72px; display:block;">' + bars + '</svg>';
+}
+
+function renderAnalytics(data) {
+  const box = document.getElementById('analyticsBox');
+  const conversations = data.conversations || [];
+  const calls = data.calls || [];
+  const dayKeys = lastNDayKeys(ANALYTICS_CHART_DAYS);
+  const since = new Date(dayKeys[0] + 'T00:00:00').getTime();
+
+  const recentConvos = conversations.filter((c) => c.startedAt && new Date(c.startedAt).getTime() >= since);
+  const recentCalls = calls.filter((c) => c.startedAt && new Date(c.startedAt).getTime() >= since);
+  const missedCalls = recentCalls.filter((c) => c.missedCall);
+
+  const classified = conversations.filter((c) => c.outcome && c.outcome !== 'unclassified' && c.outcome !== 'unclear');
+  const booked = conversations.filter((c) => c.outcome === 'booked');
+  const bookingRateText = classified.length > 0 ? Math.round((booked.length / classified.length) * 100) + '%' : '—';
+  const missedRateText = recentCalls.length > 0 ? Math.round((missedCalls.length / recentCalls.length) * 100) + '%' : '—';
+
+  const statTilesHtml =
+    '<div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; margin-bottom:18px;">' +
+    statTile('Chats', recentConvos.length, 'last 14 days') +
+    statTile('Calls', recentCalls.length, 'last 14 days') +
+    statTile('Booking rate', bookingRateText, 'of reviewed chats') +
+    statTile('Missed-call rate', missedRateText, 'of calls, last 14 days') +
+    '</div>';
+
+  const chatCounts = bucketByDay(conversations, 'startedAt', dayKeys);
+  const handledCallCounts = bucketByDay(calls.filter((c) => !c.missedCall), 'startedAt', dayKeys);
+  const missedCallCounts = bucketByDay(calls.filter((c) => c.missedCall), 'startedAt', dayKeys);
+
+  const chatsChartHtml =
+    '<div style="margin-bottom:18px;">' +
+    '<div style="font-size:12.5px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;">Chats per day</div>' +
+    stackedBarChartSvg(dayKeys, [{ key: 'chats', color: '#146856' }], [chatCounts]) +
+    '</div>';
+
+  const callsChartHtml =
+    '<div style="margin-bottom:18px;">' +
+    '<div style="font-size:12.5px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;">Calls per day</div>' +
+    stackedBarChartSvg(
+      dayKeys,
+      [{ key: 'handled', color: '#146856' }, { key: 'missed', color: '#b91c1c' }],
+      [handledCallCounts, missedCallCounts]
+    ) +
+    '<div style="display:flex; gap:14px; margin-top:6px; font-size:12px; color:var(--ink-soft);">' +
+    '<span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:#146856; margin-right:5px;"></span>Handled</span>' +
+    '<span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:#b91c1c; margin-right:5px;"></span>Missed (text-back sent)</span>' +
+    '</div></div>';
+
+  const outcomeCounts = { booked: 0, unbooked_lead: 0, resolved_question: 0, not_reviewed: 0 };
+  conversations.forEach((c) => {
+    if (c.outcome === 'booked') outcomeCounts.booked += 1;
+    else if (c.outcome === 'unbooked_lead') outcomeCounts.unbooked_lead += 1;
+    else if (c.outcome === 'resolved_question') outcomeCounts.resolved_question += 1;
+    else outcomeCounts.not_reviewed += 1;
+  });
+  const outcomeTotal = Math.max(1, conversations.length);
+  const outcomeRowsHtml = Object.keys(OUTCOME_CHART_META).map((key) => {
+    const meta = OUTCOME_CHART_META[key];
+    const count = outcomeCounts[key];
+    const pct = Math.round((count / outcomeTotal) * 100);
+    return '<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:12.5px;">' +
+      '<span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:' + meta.color + '; flex-shrink:0;"></span>' +
+      '<span style="flex:1;">' + meta.label + '</span>' +
+      '<span style="color:var(--ink-soft);">' + count + ' (' + pct + '%)</span></div>';
+  }).join('');
+
+  if (conversations.length === 0 && calls.length === 0) {
+    box.innerHTML = '<p class="section-hint">No chats or calls yet -- this fills in automatically once your AI starts answering.</p>';
+    return;
+  }
+
+  box.innerHTML = statTilesHtml + chatsChartHtml + callsChartHtml +
+    '<div style="font-size:12.5px; font-weight:600; color:var(--ink-soft); margin-bottom:8px;">All-time chat outcomes</div>' +
+    outcomeRowsHtml;
+}
+
+function statTile(label, value, sublabel) {
+  return '<div style="background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:12px 14px;">' +
+    '<div style="font-size:21px; font-weight:800; font-family:\'Plus Jakarta Sans\', sans-serif; color:var(--ink);">' + value + '</div>' +
+    '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">' + label + ' &middot; ' + sublabel + '</div></div>';
 }
 
 function renderConversations(conversations) {
