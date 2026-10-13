@@ -438,11 +438,77 @@ const BOOKING_TOOLS = [
     },
   },
 ];
+BOOKING_TOOLS.push({
+  name: 'flag_emergency',
+  description:
+    "Call this IMMEDIATELY the moment the visitor describes a genuine emergency as defined in this business's own approved script (e.g. a gas smell, a burst pipe or active flooding, no heat in freezing weather, exposed wiring) -- this alerts the business right away, it does not just save a note for later. Do not wait until the end of the conversation to call it.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      issueSummary: { type: 'string', description: 'One sentence describing the emergency, in your own words' },
+      callerName: { type: 'string' },
+      callerPhone: { type: 'string' },
+    },
+    required: ['issueSummary'],
+  },
+});
 
 async function executeBookingTool(name, input, clientRecord, source = 'website chat widget') {
   const timeZone = clientRecord.intake?.timeZone || 'Europe/London';
   const durationMinutes =
     Number(input.durationMinutes) || Number(clientRecord.intake?.appointmentLengthMinutes) || 60;
+  if (name === 'flag_emergency') {
+    // Deliberately placed BEFORE the Google Calendar connection check below
+    // -- flagging an emergency has nothing to do with calendar booking, and
+    // must work for every client regardless of whether they've connected a
+    // calendar yet. Tries to text the on-call number first (if the client
+    // provided one and has a live Retell phone number to text from), falls
+    // back to emailing the business's own contact address otherwise -- so
+    // every client gets SOME real alert, never just a note nobody sees
+    // until morning. Never throws: a live call or chat must never break
+    // just because this alert failed to send.
+    const companyName = clientRecord.intake?.companyName || 'the business';
+    const emergencySummaryLines = [
+      `Possible emergency reported via Dispatch AI (${source}).`,
+      input.issueSummary ? `What they said: ${input.issueSummary}` : null,
+      input.callerName ? `Name: ${input.callerName}` : null,
+      input.callerPhone ? `Phone: ${input.callerPhone}` : null,
+    ].filter(Boolean).join('\n');
+
+    const onCallNumber = clientRecord.intake?.onCallNumber;
+    if (onCallNumber && clientRecord.retellPhoneNumber) {
+      try {
+        await sendSms({ to: onCallNumber, from: clientRecord.retellPhoneNumber, text: emergencySummaryLines });
+        return {
+          alerted: true,
+          note: 'The on-call number has just been texted about this. Tell the caller it has been flagged as urgent and someone will reach out right away.',
+        };
+      } catch (err) {
+        console.error(`Emergency SMS alert failed for client ${clientRecord.id}:`, err.message || err);
+      }
+    }
+    if (clientRecord.intake?.contactEmail) {
+      try {
+        await sendEmail({
+          to: clientRecord.intake.contactEmail,
+          subject: `Possible emergency reported -- ${companyName}`,
+          text: emergencySummaryLines,
+          fromName: 'Dispatch AI',
+        });
+        return {
+          alerted: true,
+          note: 'The business has just been emailed about this. Tell the caller it has been flagged as urgent and someone will follow up as soon as possible.',
+        };
+      } catch (err) {
+        console.error(`Emergency email alert failed for client ${clientRecord.id}:`, err.message || err);
+      }
+    }
+    return {
+      alerted: false,
+      note: "Couldn't reach the business automatically just now. Still treat this as urgent -- tell the caller a team member will follow up as soon as possible.",
+    };
+  }
+
 
   if (!googleCalendar.isConfigured() || !clientRecord.googleRefreshToken) {
     return {
