@@ -2640,6 +2640,28 @@ const server = http.createServer(async (req, res) => {
             disconnectionReason: call.disconnection_reason || null,
             missedCall: MISSED_CALL_DISCONNECT_REASONS.has(call.disconnection_reason),
           });
+          // Guarantees every real phone call shows up in the "Customer jobs"
+          // table, even if the AI never called log_job_request mid-call (a
+          // quick question, a wrong number, a missed call) -- this runs for
+          // ALL calls, not just missed ones, which is the whole point.
+          // Skipped if a job was already logged for this call -- either by
+          // log_job_request mid-call, or by the missed-call block above --
+          // detected by checking for one created since this call started,
+          // which holds for the realistic case of one active call at a time
+          // per client's number.
+          const jobCallStartIso = call.start_timestamp ? new Date(call.start_timestamp).toISOString() : null;
+          const jobAlreadyLoggedThisCall =
+            jobCallStartIso && db.listJobsForClient(clientRecord.id).some((j) => j.createdAt >= jobCallStartIso);
+          if (!jobAlreadyLoggedThisCall) {
+            db.addJob({
+              clientId: clientRecord.id,
+              source: 'phone call',
+              customerPhone: call.from_number || '',
+              jobDescription: MISSED_CALL_DISCONNECT_REASONS.has(call.disconnection_reason)
+                ? '(Missed call -- no job captured)'
+                : '(Call answered -- no further details captured)',
+            });
+          }
         }
 
       }
