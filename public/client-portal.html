@@ -52,6 +52,11 @@
           <p class="section-hint">Call &amp; chat volume over the last 14 days, how many turn into a booking, and how often a call needed the missed-call text-back.</p>
           <div id="analyticsBox"></div>
         </div>
+        <div class="section-block" id="customerJobsSection">
+          <h2>Customer jobs</h2>
+          <p class="section-hint">Every job your AI has taken down from a caller or chat visitor, with their contact details -- edit any field and tap Save to fix a detail or add your own note. Download the whole list as a spreadsheet any time.</p>
+          <div id="customerJobsBox"></div>
+        </div>
 
         <div class="section-block">
           <h2>Your AI agent's script</h2>
@@ -183,6 +188,7 @@ async function load() {
     }
     const data = await res.json();
     data.calls = await api('/calls').then((r) => r.calls || []).catch(() => []);
+    data.jobs = await api('/jobs').then((r) => r.jobs || []).catch(() => []);
     currentData = data;
     render(data);
     loadingState.style.display = 'none';
@@ -228,6 +234,7 @@ function render(data) {
   renderCalendar(data);
   renderUsage(data);
   renderAnalytics(data);
+  renderCustomerJobs(data);
 }
 
 function renderHostedPage(data) {
@@ -653,6 +660,82 @@ document.getElementById('regenerateBtn').addEventListener('click', async () => {
 });
 
 load();
+function renderCustomerJobs(data) {
+  const box = document.getElementById('customerJobsBox');
+  const jobs = data.jobs || [];
+  if (jobs.length === 0) {
+    box.innerHTML = '<p class="section-hint">No job requests yet -- this fills in automatically once your AI starts taking them down from a real call or chat.</p>';
+    return;
+  }
+
+  const statusOptions = ['new', 'contacted', 'booked', 'done', 'declined'];
+
+  box.innerHTML = '<button class="btn btn-secondary" id="downloadJobsCsvBtn" style="margin-bottom:12px;">Download as spreadsheet (.csv)</button>' +
+    jobs.map((job) => {
+      const optionsHtml = statusOptions.map((s) =>
+        '<option value="' + s + '"' + (job.status === s ? ' selected' : '') + '>' + s + '</option>'
+      ).join('');
+      return '<div class="job-row" data-id="' + job.id + '" style="border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:8px;">' +
+        '<div style="font-size:12px; color:var(--ink-soft); margin-bottom:6px;">' + new Date(job.createdAt).toLocaleString() + ' &middot; ' + escapeAttr(job.source || '') + '</div>' +
+        '<input class="job-field" data-field="customerName" placeholder="Name" value="' + escapeAttr(job.customerName || '') + '" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:5px;" />' +
+        '<input class="job-field" data-field="customerPhone" placeholder="Phone" value="' + escapeAttr(job.customerPhone || '') + '" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:5px;" />' +
+        '<input class="job-field" data-field="customerEmail" placeholder="Email" value="' + escapeAttr(job.customerEmail || '') + '" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:5px;" />' +
+        '<textarea class="job-field" data-field="jobDescription" placeholder="Job wanted" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:5px; min-height:50px;">' + escapeAttr(job.jobDescription || '') + '</textarea>' +
+        '<input class="job-field" data-field="preferredTime" placeholder="Preferred time" value="' + escapeAttr(job.preferredTime || '') + '" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:5px;" />' +
+        '<select class="job-field" data-field="status" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:5px;">' + optionsHtml + '</select>' +
+        '<textarea class="job-field" data-field="notes" placeholder="Your own notes" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; min-height:36px;">' + escapeAttr(job.notes || '') + '</textarea>' +
+        '<div style="margin-top:6px; display:flex; align-items:center; gap:8px;">' +
+        '<button class="btn btn-secondary save-job-btn" data-id="' + job.id + '">Save</button>' +
+        '<span class="job-save-result" data-id="' + job.id + '" style="font-size:12px; color:var(--ink-soft);"></span>' +
+        '</div></div>';
+    }).join('');
+
+  document.getElementById('downloadJobsCsvBtn').addEventListener('click', () => downloadJobsCsv(jobs));
+
+  box.querySelectorAll('.save-job-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const row = box.querySelector('.job-row[data-id="' + id + '"]');
+      const resultEl = box.querySelector('.job-save-result[data-id="' + id + '"]');
+      const updates = {};
+      row.querySelectorAll('[data-field]').forEach((el) => { updates[el.dataset.field] = el.value; });
+      resultEl.textContent = 'Saving...';
+      try {
+        await api('/jobs/' + id, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(updates) });
+        resultEl.textContent = 'Saved';
+        setTimeout(() => { resultEl.textContent = ''; }, 2000);
+      } catch (err) {
+        resultEl.textContent = "Couldn't save, try again";
+      }
+    });
+  });
+}
+
+function downloadJobsCsv(jobs) {
+  const headers = ['Date', 'Source', 'Name', 'Phone', 'Email', 'Job wanted', 'Preferred time', 'Status', 'Notes'];
+  const csvEscape = (value) => '"' + String(value == null ? '' : value).replace(/"/g, '""') + '"';
+  const rows = jobs.map((job) => [
+    job.createdAt ? new Date(job.createdAt).toLocaleString() : '',
+    job.source || '',
+    job.customerName || '',
+    job.customerPhone || '',
+    job.customerEmail || '',
+    job.jobDescription || '',
+    job.preferredTime || '',
+    job.status || '',
+    job.notes || '',
+  ].map(csvEscape).join(','));
+  const csvContent = [headers.map(csvEscape).join(',')].concat(rows).join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'customer-jobs.csv';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 </script>
 </body>
 </html>
