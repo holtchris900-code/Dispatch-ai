@@ -478,6 +478,26 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
     const onCallNumber = clientRecord.intake?.onCallNumber;
     if (onCallNumber && clientRecord.retellPhoneNumber) {
       try {
+        const call = await placeEmergencyAlertCall(db, {
+          fromNumber: clientRecord.retellPhoneNumber,
+          toNumber: onCallNumber,
+          companyName,
+          issueSummary: input.issueSummary,
+          callerName: input.callerName,
+          callerPhone: input.callerPhone,
+        });
+        if (call) {
+          return {
+            alerted: true,
+            note: "An automated call is going out to the on-call number right now to brief them on this. Tell the caller it's been flagged as urgent and someone will reach out right away.",
+          };
+        }
+      } catch (err) {
+        console.error(`Emergency alert call failed for client ${clientRecord.id}:`, err.message || err);
+      }
+    }
+    if (onCallNumber && clientRecord.retellPhoneNumber) {
+      try {
         await sendSms({ to: onCallNumber, from: clientRecord.retellPhoneNumber, text: emergencySummaryLines });
         return {
           alerted: true,
@@ -2633,3 +2653,4 @@ server.listen(PORT, () => {
     console.log('NOTE: GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set -- the dashboard\'s "Connect Google Calendar" button will show a setup message instead of connecting a real calendar. See LAUNCH_CHECKLIST.md.');
   }
 });
+const { placeEmergencyAlertCall } = require('./lib/retellClient');
