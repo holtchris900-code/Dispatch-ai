@@ -452,6 +452,25 @@ BOOKING_TOOLS.push({
     required: ['issueSummary'],
   },
 });
+BOOKING_TOOLS.push({
+  name: 'log_job_request',
+  description:
+    "Call this once -- and only once -- per customer, as soon as you know what job or service they want done AND have at least one way to reach them (a name plus a phone number or email). Call it even if you go on to book a specific appointment time with book_appointment right after -- this is what lets the business see every real job request, not just the ones that get booked on the spot. Don't call it again just because they mention more detail afterwards.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      customerName: { type: 'string' },
+      customerPhone: { type: 'string' },
+      customerEmail: { type: 'string' },
+      jobDescription: { type: 'string', description: 'What they want done, in their own words' },
+      preferredTime: {
+        type: 'string',
+        description: "Whatever they said about timing, in their own words (e.g. 'tomorrow afternoon', 'whenever is cheapest') -- not necessarily a confirmed booking",
+      },
+    },
+    required: ['jobDescription'],
+  },
+});
 
 async function executeBookingTool(name, input, clientRecord, source = 'website chat widget') {
   const timeZone = clientRecord.intake?.timeZone || 'Europe/London';
@@ -527,6 +546,27 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
       alerted: false,
       note: "Couldn't reach the business automatically just now. Still treat this as urgent -- tell the caller a team member will follow up as soon as possible.",
     };
+  }
+  if (name === 'log_job_request') {
+    // Deliberately placed BEFORE the Google Calendar connection check below,
+    // for the same reason flag_emergency is -- taking down a job request
+    // has nothing to do with calendar booking, and must work for every
+    // client whether or not they've connected a calendar yet. Never throws:
+    // a live call or chat must never break just because this failed to save.
+    try {
+      db.addJob({
+        clientId: clientRecord.id,
+        source,
+        customerName: input.customerName,
+        customerPhone: input.customerPhone,
+        customerEmail: input.customerEmail,
+        jobDescription: input.jobDescription,
+        preferredTime: input.preferredTime,
+      });
+    } catch (err) {
+      console.error(`Failed to save job request for client ${clientRecord.id}:`, err.message || err);
+    }
+    return { logged: true };
   }
 
 
@@ -1543,6 +1583,41 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 404, { error: 'not found' });
       }
       return sendJson(res, 200, { calls: db.listCallsForClient(clientRecord.id) });
+    }
+    // Customer-jobs data for the client portal's editable jobs table --
+    // same "paid or cancelled clients only" gate as /calls and /data above.
+    const clientPortalJobsMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/jobs$/);
+    if (clientPortalJobsMatch && req.method === 'GET') {
+      const clientRecord = db.getClientByPortalToken(clientPortalJobsMatch[1]);
+      if (!clientRecord || (clientRecord.status !== 'paid' && clientRecord.status !== 'cancelled')) {
+        return sendJson(res, 404, { error: 'not found' });
+      }
+      return sendJson(res, 200, { jobs: db.listJobsForClient(clientRecord.id) });
+    }
+
+    // Lets a client correct or annotate one row of their own job list --
+    // e.g. fixing a misheard phone number, or marking a job done -- right
+    // from the portal. Checks the job id actually belongs to THIS client,
+    // not just any job id that happens to resolve to something.
+    const clientPortalJobUpdateMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/jobs\/([^/]+)$/);
+    if (clientPortalJobUpdateMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPortalToken(clientPortalJobUpdateMatch[1]);
+      if (!clientRecord || (clientRecord.status !== 'paid' && clientRecord.status !== 'cancelled')) {
+        return sendJson(res, 404, { error: 'not found' });
+      }
+      const jobId = clientPortalJobUpdateMatch[2];
+      const ownJobs = db.listJobsForClient(clientRecord.id);
+      if (!ownJobs.some((j) => j.id === jobId)) {
+        return sendJson(res, 404, { error: 'not found' });
+      }
+      const updates = await readBody(req);
+      const allowedFields = ['customerName', 'customerPhone', 'customerEmail', 'jobDescription', 'preferredTime', 'status', 'notes'];
+      const safeUpdates = {};
+      allowedFields.forEach((key) => {
+        if (key in updates) safeUpdates[key] = updates[key];
+      });
+      const updated = db.updateJob(jobId, safeUpdates);
+      return sendJson(res, 200, { job: updated });
     }
 
     // Lets a client edit their own AI agent's script -- but unlike the
