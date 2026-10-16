@@ -173,7 +173,7 @@ function clientPortalView(clientRecord) {
     pastCustomerPortalToken: clientRecord.pastCustomerPortalToken || null,
     reviewLink: clientRecord.reviewLink || null,
     hostedPageEnabled: !!clientRecord.hostedPageEnabled,
-    hostedPageSlug: clientRecord.hostedPageSlug || null,
+    hostedPageSlug: clientRecord.hostedPageSlug || null,    hasServiceM8Key: !!clientRecord.serviceM8ApiKey,
   };
 }
 
@@ -565,7 +565,13 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
       });
     } catch (err) {
       console.error(`Failed to save job request for client ${clientRecord.id}:`, err.message || err);
-    }
+    }    pushJobToServiceM8IfConnected(clientRecord, {
+      customerName: input.customerName,
+      customerPhone: input.customerPhone,
+      customerEmail: input.customerEmail,
+      jobDescription: input.jobDescription,
+      preferredTime: input.preferredTime,
+    });
     return { logged: true };
   }
 
@@ -1818,6 +1824,19 @@ const server = http.createServer(async (req, res) => {
         retellPhoneNumberSavedAt: new Date().toISOString(),
       });
       return sendJson(res, 200, clientPortalView(updated));
+    }    const clientPortalServiceM8Match = pathname.match(/^\/api\/client-portal\/([^/]+)\/service-m8$/);
+    if (clientPortalServiceM8Match && req.method === 'POST') {
+      const clientRecord = db.getClientByPortalToken(clientPortalServiceM8Match[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+      const { serviceM8ApiKey } = await readBody(req);
+      if (serviceM8ApiKey) {
+        const works = await serviceM8.testApiKey(serviceM8ApiKey);
+        if (!works) {
+          return sendJson(res, 400, { error: "That key didn't work -- double check it and try again." });
+        }
+      }
+      const updated = db.updateClient(clientRecord.id, { serviceM8ApiKey: serviceM8ApiKey || null });
+      return sendJson(res, 200, clientPortalView(updated));
     }
     const clientPortalReviewLinkMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/review-link$/);
     if (clientPortalReviewLinkMatch && req.method === 'POST') {
@@ -2614,6 +2633,11 @@ const server = http.createServer(async (req, res) => {
               jobDescription: MISSED_CALL_DISCONNECT_REASONS.has(call.disconnection_reason)
                 ? '(Missed call -- no job captured)'
                 : '(Call answered -- no further details captured)',
+            });            pushJobToServiceM8IfConnected(clientRecord, {
+              customerPhone: call.from_number || '',
+              jobDescription: MISSED_CALL_DISCONNECT_REASONS.has(call.disconnection_reason)
+                ? '(Missed call -- no job captured)'
+                : '(Call answered -- no further details captured)',
             });
           }
           const companyName = (clientRecord.intake && clientRecord.intake.companyName) || 'us';
@@ -2771,3 +2795,23 @@ server.listen(PORT, () => {
   }
 });
 const { placeEmergencyAlertCall } = require('./lib/retellClient');
+const serviceM8 = require('./lib/serviceM8Client');
+
+// Pushes a just-logged job into a client's own ServiceM8 account too, if
+// they've connected one -- so it shows up in the job-management software
+// they already run their business from, not just in Dispatch AI's own
+// portal. Deliberately not awaited by its callers: this always runs in the
+// background, after the job is already safely saved in Dispatch AI's own
+// records, so a slow or failing ServiceM8 call can never delay or break a
+// live call, chat, or webhook response.
+async function pushJobToServiceM8IfConnected(clientRecord, jobFields) {
+  if (!clientRecord || !clientRecord.serviceM8ApiKey) return;
+  try {
+    const result = await serviceM8.createServiceM8Job(clientRecord.serviceM8ApiKey, jobFields);
+    if (!result.success) {
+      console.error(`ServiceM8 push failed for client ${clientRecord.id}:`, result.error);
+    }
+  } catch (err) {
+    console.error(`ServiceM8 push failed for client ${clientRecord.id}:`, err.message || err);
+  }
+}
