@@ -57,6 +57,13 @@
           <p class="section-hint">Every job your AI has taken down from a caller or chat visitor, with their contact details -- edit any field and tap Save to fix a detail or add your own note. Download the whole list as a spreadsheet any time.</p>
           <div id="customerJobsBox"></div>
         </div>
+        <div class="section-block" id="serviceM8Section">
+          <h2>Connect ServiceM8</h2>
+          <p class="section-hint">If you run ServiceM8, paste your API key below and every job your AI logs will also be created there automatically -- find it in ServiceM8 under Settings &gt; API Key. Status: <strong id="serviceM8KeyStatus">checking...</strong></p>
+          <input type="text" id="serviceM8KeyInput" placeholder="Paste your ServiceM8 API key (leave blank and save to disconnect)" style="width:100%; padding:8px; border-radius:6px; border:1px solid var(--line); font-size:13px; margin-bottom:8px;" />
+          <button class="btn btn-secondary" id="saveServiceM8KeyBtn" style="font-size:12.5px; padding:8px 14px;">Save ServiceM8 key</button>
+          <div id="serviceM8KeyResult" style="margin-top:8px; font-size:12.5px; display:none;"></div>
+        </div>
 
         <div class="section-block">
           <h2>Your AI agent's script</h2>
@@ -223,6 +230,7 @@ function render(data) {
 
   document.getElementById('manageBillingBtn').style.display = data.hasStripeCustomer ? 'inline-flex' : 'none';
   document.getElementById('reviewLinkInput').value = data.reviewLink || '';
+  document.getElementById('serviceM8KeyStatus').textContent = data.hasServiceM8Key ? 'Connected ✅' : 'Not connected yet';
 
   const widgetSnippet = '<script src="' + window.location.origin + '/widget.js" data-client-id="' + data.id +
     '" data-company-name="' + escapeAttr(data.companyName) + '" data-label="Chat with us"><' + '/script>';
@@ -641,6 +649,24 @@ document.getElementById('saveReviewLinkBtn').addEventListener('click', async () 
   resultBox.innerHTML = '<span style="color:#166534;">Saved.</span>';
   btn.disabled = false;
   btn.textContent = 'Save review link';
+});
+document.getElementById('saveServiceM8KeyBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('saveServiceM8KeyBtn');
+  const resultBox = document.getElementById('serviceM8KeyResult');
+  const serviceM8ApiKey = document.getElementById('serviceM8KeyInput').value;
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  const data = await api('/service-m8', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ serviceM8ApiKey }) });
+  resultBox.style.display = 'block';
+  if (data.error) {
+    resultBox.innerHTML = '<span style="color:#b91c1c;">' + escapeAttr(data.error) + '</span>';
+  } else {
+    resultBox.innerHTML = '<span style="color:#166534;">Saved.</span>';
+    document.getElementById('serviceM8KeyInput').value = '';
+    document.getElementById('serviceM8KeyStatus').textContent = data.hasServiceM8Key ? 'Connected ✅' : 'Not connected yet';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Save ServiceM8 key';
 });
 
 document.getElementById('regenerateBtn').addEventListener('click', async () => {
