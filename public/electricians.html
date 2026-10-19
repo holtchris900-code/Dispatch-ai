@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Phone & Chat Answering for Electricians | Dispatch AI</title>
+<meta name="description" content="Dispatch AI answers every call and chat for your electrical business, 24/7 -- books the job straight into your calendar and flags no power or exposed wiring as an emergency instantly. Try the live demo.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="logo" href="/">Dispatch<span>AI</span></a>
+    <nav>
+      <a href="#demo">Try the demo</a>
+      <a href="#pricing">Pricing</a>
+      <a class="nav-cta" href="/onboard">Get started</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div>
+      <div class="eyebrow">● AI answering built for electricians</div>
+      <h1>Every missed call is a <span class="accent">customer calling another electrician</span> instead.</h1>
+      <p class="sub">Dispatch AI answers every call and chat, books the job, and flags no power or exposed wiring as an emergency -- 24/7, even when your office is closed. The demo on the right is a real, working AI agent.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/onboard">Set up my electrical business's AI agent</a>
+        <a class="btn btn-secondary" href="#pricing">See pricing</a>
+      </div>
+      <div class="fine-print">Try chatting with the demo AI first — it's the same technology your customers would talk to.</div>
+      <div class="fine-print">Flat monthly pricing, not per-minute billing — plus a 30-day money-back guarantee if it's not working out.</div>
+
+
+      <div class="stat-strip">
+        <div class="stat"><b>24/7</b><span>Always answering</span></div>
+        <div class="stat"><b>&lt;2 sec</b><span>Typical response time</span></div>
+        <div class="stat"><b>1 afternoon</b><span>To set up your agent</span></div>
+      </div>
+    </div>
+
+    <div class="chat-card" id="demo">
+      <div class="badge"><span class="dot"></span> <span id="demoBadgeText">Live demo — "Summit Electrical Services" (fictional demo company)</span></div>
+
+            <div class="voice-demo" id="voiceDemo">
+        <div class="voice-demo-idle" id="voiceDemoIdle">
+          <button class="btn btn-primary voice-demo-btn" id="voiceDemoBtn" type="button">🎤 Talk to it live</button>
+          <span class="voice-demo-hint">Tap to talk through your mic — no sign-up, no dialing.</span>
+        </div>
+        <div class="voice-demo-controls" id="voiceDemoControls">
+          <span class="voice-demo-live-dot"></span>
+          <span class="voice-demo-status" id="voiceDemoStatus">Connecting…</span>
+          <button class="voice-demo-icon-btn" id="voiceDemoMuteBtn" type="button">Mute</button>
+          <button class="voice-demo-icon-btn voice-demo-end" id="voiceDemoEndBtn" type="button">End call</button>
+        </div>
+        <div class="voice-demo-unavailable" id="voiceDemoUnavailable">
+          Voice demo is being set up — try the text chat below in the meantime.
+        </div>
+      </div>
+
+       <div class="demo-personalize" id="demoPersonalize">
+        <div class="demo-personalize-row">
+          <input id="demoCompanyInput" type="text" placeholder="Your electrical company name" maxlength="60" />
+          <select id="demoTradeInput">
+            <option value="">Trade (optional)</option>
+            <option value="HVAC">HVAC</option>
+            <option value="Plumbing">Plumbing</option>
+            <option value="Electrical" selected>Electrical</option>
+            <option value="HVAC, plumbing & electrical">HVAC, plumbing &amp; electrical</option>
+          </select>
+          <button class="btn btn-primary" id="personalizeBtn" type="button">Try it as my business</button>
+        </div>
+      </div>
+      <div class="demo-personalized-note" id="demoPersonalizedNote">
+        Personalized for <b id="demoPersonalizedName"></b> — <a id="changeDemoLink">use the example instead</a>
+      </div>
+
+      <div id="chatLog">
+        <div class="msg ai"><div class="bubble">Thanks for calling Summit Electrical Services, this is your AI assistant — how can I help today?</div></div>
+      </div>
+      <div class="chat-input-row">
+        <input id="chatInput" type="text" placeholder="Type a message, e.g. 'My power keeps cutting out'" />
+        <button class="btn btn-primary" id="sendBtn">Send</button>
+      </div>
+      <div class="demo-mode-banner" id="demoModeBanner">
+        Running in placeholder mode — add your ANTHROPIC_API_KEY in .env to get real AI responses instead of this canned message.
+      </div>
+    </div>
+  </section>
+
+    <section class="calc-section">
+    <div class="calc-card">
+      <div class="calc-header">
+        <h2>What are missed calls costing your electrical business right now?</h2>
+        <p class="lead">Drag the sliders to match your business — the numbers update instantly.</p>
+      </div>
+      <div class="calc-grid">
+        <div class="calc-inputs">
+          <div class="calc-field">
+            <div class="calc-field-top">
+              <label for="calcMissedCalls">Missed calls per week</label>
+              <span class="calc-field-value"><span id="calcMissedCallsValue">5</span></span>
+            </div>
+            <input type="range" id="calcMissedCalls" min="1" max="30" value="5" step="1">
+          </div>
+          <div class="calc-field">
+            <div class="calc-field-top">
+              <label for="calcJobValue">Average job value</label>
+              <span class="calc-field-value">£<span id="calcJobValueValue">150</span></span>
+            </div>
+            <input type="range" id="calcJobValue" min="50" max="1000" value="150" step="10">
+          </div>
+          <p class="calc-assumption">Based on roughly 1 in 3 missed calls turning into a paying job if answered — a conservative estimate for home service businesses.</p>
+        </div>
+        <div class="calc-result">
+          <div class="calc-result-label">Estimated revenue walking out the door</div>
+          <div class="calc-result-amount"><span class="calc-result-currency">£</span><span id="calcMonthlyLoss">1,083</span><span class="calc-result-period">/month</span></div>
+          <div class="calc-result-annual">£<span id="calcAnnualLoss">13,000</span> per year</div>
+          <a class="btn btn-primary btn-block" href="/onboard">Stop losing this revenue</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+<section class="section-tight">
+    <h2>Live in three steps</h2>
+    <p class="lead">No developers, no long onboarding calls — just answer some questions about how your electrical business runs.</p>
+    <div class="steps">
+      <div class="step-card">
+        <div class="step-num">1</div>
+        <h3>Tell us about your business</h3>
+        <p>A short form covers your services, pricing, hours, and how you want emergencies handled.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">2</div>
+        <h3>Review your AI's script</h3>
+        <p>We draft a script from your answers. You read it, edit anything, and approve it before it ever talks to a customer.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">3</div>
+        <h3>Go live</h3>
+        <p>Connect your phone line and website chat, and your AI agent starts answering — day or night.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Built for the way electrical calls actually go</h2>
+    <p class="lead">Answers every call, books directly into your calendar, flags a true electrical emergency, and lets you review the script before it ever talks to a real customer.</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h3>Answers every call</h3>
+        <p>No more missed calls going to voicemail — or straight to the next electrician in the search results.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Books the job</h3>
+        <p>Connect your Google Calendar and it checks real availability and creates the appointment on the spot -- no back-and-forth needed.</p>
+        <div class="integration-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"></rect><line x1="3" y1="9.5" x2="21" y2="9.5"></line><line x1="7.5" y1="2.5" x2="7.5" y2="6.5"></line><line x1="16.5" y1="2.5" x2="16.5" y2="6.5"></line></svg>
+          <span>Works with Google Calendar</span>
+        </div>
+      </div>
+      <div class="feature-card">
+        <h3>Flags true electrical emergencies</h3>
+        <p>You define what counts as urgent for your business — no power, exposed wiring, a burning smell, or a fuse box that keeps tripping — and it's handled differently from a routine booking.</p>
+        <p style="margin-top:8px; font-size:13px; color:#4b5563;">The moment it's flagged, your on-call number gets a text immediately — or you get an email alert if you haven't set one up — so it's never just logged and left until morning.</p>
+      </div>
+      <div class="feature-card">
+        <h3>You stay in control</h3>
+        <p>Every script is written for your business and reviewed by you before it goes live.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-tight">
+    <h2>Why business owners trust it with their phone line</h2>
+    <p class="lead">No fine print to hunt for — here's exactly what you're agreeing to.</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h3>Your customers' data stays yours</h3>
+        <p>Never sold, never shared, never used for anything except running your own AI agent.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Always discloses it's an AI</h3>
+        <p>Every call and chat opens by saying so — a compliance requirement here, not a nice-to-have.</p>
+      </div>
+      <div class="feature-card">
+        <h3>14-day free trial, no card tricks</h3>
+        <p>You're not charged until the trial ends, and you can cancel before that with nothing owed.</p>
+      </div>
+      <div class="feature-card">
+        <h3>30-day money-back guarantee</h3>
+        <p>Not pulling its weight in your first 30 days? Tell us and we'll refund you in full, no questions asked.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="pricing">
+    <h2>Simple, transparent pricing</h2>
+    <p class="lead">No enterprise sales calls, no seat minimums — just a flat monthly price built for one-location home service businesses. Billed monthly in GBP, cancel anytime.</p>
+    <p class="price-anchor">Flat monthly rate, not per-minute billing — your price is the same whether a call lasts 30 seconds or 10 minutes.</p>
+
+    <p class="price-anchor">A part-time receptionist typically costs £1,500+/month, and traditional phone-answering services often charge £150–£400/month for business-hours-only coverage. Dispatch AI starts at £119/month for round-the-clock coverage.</p>
+    <p class="trial-note">Every plan starts with a <b>14-day free trial</b> — you're not charged until it ends, and you can cancel any time before that with nothing owed.</p>
+        <div class="billing-toggle" id="billingToggle">
+      <button class="billing-toggle-btn active" id="billingMonthlyBtn" type="button">Monthly</button>
+      <button class="billing-toggle-btn" id="billingAnnualBtn" type="button">Annual <span class="billing-save-badge">Save 15%</span></button>
+    </div>
+<div class="pricing-grid">
+      <div class="price-card">
+        <h3>Starter</h3>
+        <p class="price-desc">For a single line that just needs to stop missing calls.</p>
+        <div class="price-amount"><span class="amount">£119</span><span class="period">/ month</span></div>
+        <p style="margin:-6px 0 12px; font-size:12.5px; color:#6b7280;">≈ 50 typical calls a month, assuming about 5 minutes each</p>
+        <ul class="price-features">
+          <li><span class="check">✓</span> 250 call &amp; chat minutes / month</li>
+          <li><span class="check">✓</span> One phone line + website chat</li>
+          <li><span class="check">✓</span> Standard booking &amp; FAQ script</li>
+          <li><span class="check">✓</span> Email support</li>
+        </ul>
+        <a class="btn btn-secondary btn-block" href="/onboard">Start free trial</a>
+      </div>
+
+      <div class="price-card featured">
+        <div class="price-badge">Most popular</div>
+        <h3>Growth</h3>
+        <p class="price-desc">The right fit for most single-location electrical businesses.</p>
+        <div class="price-amount"><span class="amount">£229</span><span class="period">/ month</span></div>
+        <p style="margin:-6px 0 12px; font-size:12.5px; color:#6b7280;">≈ 150 typical calls a month, assuming about 5 minutes each</p>
+        <ul class="price-features">
+          <li><span class="check">✓</span> 750 call &amp; chat minutes / month</li>
+          <li><span class="check">✓</span> Everything in Starter</li>
+          <li><span class="check">✓</span> Emergency call routing &amp; priority flagging</li>
+          <li><span class="check">✓</span> Scheduling software integration</li>
+          <li><span class="check">✓</span> Priority support</li>
+        </ul>
+        <a class="btn btn-primary btn-block" href="/onboard">Start free trial</a>
+      </div>
+
+      <div class="price-card">
+        <h3>Multi-Location</h3>
+        <p class="price-desc">For businesses running more than one location or phone line.</p>
+        <div class="price-amount"><span class="amount">Custom</span></div>
+        <ul class="price-features">
+          <li><span class="check">✓</span> Everything in Growth</li>
+          <li><span class="check">✓</span> Multiple locations / phone lines</li>
+          <li><span class="check">✓</span> Volume-based minute allowance</li>
+          <li><span class="check">✓</span> Dedicated onboarding</li>
+        </ul>
+        <a class="btn btn-secondary btn-block" href="/onboard">Get in touch</a>
+      </div>
+    </div>
+        <div class="guarantee-badge">
+      <span class="guarantee-icon">🛡️</span>
+      <p><b>Try it free for 14 days.</b> If Dispatch AI isn't pulling its weight in your first 30 days after that, tell us and we'll refund you in full — no questions asked.</p>
+    </div>
+<p class="pricing-footnote">Overage minutes beyond your plan's allowance are billed at £0.30–£0.35/minute. No long-term contracts — cancel your subscription any time and billing stops immediately.</p>
+  </section>
+
+  <section class="section">
+    <h2>Common questions from electrical business owners</h2>
+    <p class="lead">The things most owners ask before they hand their phone line to an AI.</p>
+    <div class="faq-list">
+      <details class="faq-item">
+        <summary>What if it doesn't know the answer to something?</summary>
+        <p>It's built to say a team member will follow up rather than guess or make something up — the same rule that applies to your real script. A true emergency, like exposed wiring or no power, can also be routed straight to whoever you're already on-call to for it.</p>
+      </details>
+      <details class="faq-item">
+        <summary>What happens if we go over our plan's minutes?</summary>
+        <p>Nothing changes for the customer on the phone — calls and chats are never cut off or slowed down. Extra minutes beyond your plan are simply billed automatically at £0.30–£0.35/minute and added to your next invoice.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Will it sound robotic, or will customers know it's AI?</summary>
+        <p>It always discloses that it's an AI assistant right in the greeting — that's a compliance requirement, not optional. Beyond that, you write and approve every word it says before it ever talks to a real customer, so the tone is yours, not a generic script.</p>
+      </details>
+      <details class="faq-item">
+        <summary>What happens to our current phone number?</summary>
+        <p>Your AI agent gets its own live number once you're ready for phone calls, and you decide how it fits your existing line — most businesses just forward their current number to it, so nothing about the number your customers already call has to change.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Can we cancel or switch back easily?</summary>
+        <p>Yes — cancel any time from your own self-service account, no phone call or long-term contract required. Cancel during your 14-day free trial and you're never charged at all; cancel after that and billing stops immediately, with access until the end of what you already paid for.</p>
+      </details>
+      <details class="faq-item">
+        <summary>What if I'm not happy after my trial?</summary>
+        <p>You're covered by a 30-day money-back guarantee: if it's not working out within 30 days of your first charge, tell us and we'll refund that payment in full, no questions asked. After that, cancelling any time simply stops future billing.</p>
+      </details>
+
+      <details class="faq-item">
+        <summary>Can we review what it will say before it goes live?</summary>
+        <p>Always. Every script is drafted from your own answers, and you read, edit, and approve it before it's ever used on a real call or chat — the same review applies any time you edit it yourself later.</p>
+      </details>
+      <details class="faq-item">
+        <summary>What actually happens when the AI spots exposed wiring or a power outage?</summary>
+        <p>The moment it recognizes a true emergency — based on your own definition from your intake form — it alerts you immediately: a text to the on-call number you provide, or an email to your account address if you haven't set one up. It's never just logged for you to find later, and the caller is told it's been flagged as urgent.</p>
+      </details>
+      <details class="faq-item">
+        <summary>What if my business is seasonal?</summary>
+        <p>There's no penalty for pausing. Cancel any time, with no contract and no setup fee to redo, and come back whenever your season picks back up — most seasonal businesses simply resubscribe each year rather than paying through a quiet season.</p>
+      </details>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="cta-banner">
+      <h2>Stop losing electrical jobs to a missed call.</h2>
+      <p>Set up your AI agent this afternoon and see exactly what it will say to your customers before it ever answers a real call.</p>
+      <a class="btn btn-primary" href="/onboard">Set up my electrical business's AI agent</a>
+    </div>
+  </section>
+
+  <footer>Dispatch AI — AI phone &amp; chat agents for home service businesses. Also built for <a href="/plumbers">plumbers</a>, or see the <a href="/">full overview</a>.</footer>
+</div>
+
+<script>
+const chatLog = document.getElementById('chatLog');
+const chatInput = document.getElementById('chatInput');
+const sendBtn = document.getElementById('sendBtn');
+const demoModeBanner = document.getElementById('demoModeBanner');
+
+const demoBadgeText = document.getElementById('demoBadgeText');
+const demoPersonalize = document.getElementById('demoPersonalize');
+const demoPersonalizedNote = document.getElementById('demoPersonalizedNote');
+const demoPersonalizedName = document.getElementById('demoPersonalizedName');
+const demoCompanyInput = document.getElementById('demoCompanyInput');
+const demoTradeInput = document.getElementById('demoTradeInput');
+const personalizeBtn = document.getElementById('personalizeBtn');
+const changeDemoLink = document.getElementById('changeDemoLink');
+
+let history = [
+  { role: 'assistant', content: "Thanks for calling Summit Electrical Services, this is your AI assistant — how can I help today?" }
+];
+let demoCompanyName = null;
+let demoTrade = 'Electrical';
+
+function addBubble(role, text) {
+  const msg = document.createElement('div');
+  msg.className = 'msg ' + (role === 'user' ? 'user' : 'ai');
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+  msg.appendChild(bubble);
+  chatLog.appendChild(msg);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function personalizeDemo() {
+  const name = demoCompanyInput.value.trim();
+  if (!name) { demoCompanyInput.focus(); return; }
+  demoCompanyName = name;
+  demoTrade = demoTradeInput.value;
+
+  const greeting = `Thanks for calling ${name}, this is your AI assistant — how can I help today?`;
+  history = [{ role: 'assistant', content: greeting }];
+  chatLog.innerHTML = '';
+  addBubble('ai', greeting);
+  demoModeBanner.style.display = 'none';
+
+  demoBadgeText.textContent = `Live demo — personalized for "${name}"`;
+  demoPersonalize.style.display = 'none';
+  demoPersonalizedNote.style.display = 'block';
+  demoPersonalizedName.textContent = name;
+}
+
+personalizeBtn.addEventListener('click', personalizeDemo);
+demoCompanyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') personalizeDemo(); });
+changeDemoLink.addEventListener('click', () => {
+  demoPersonalize.style.display = 'block';
+  demoPersonalizedNote.style.display = 'none';
+  demoCompanyInput.focus();
+});
+
+async function sendMessage() {
+  const text = chatInput.value.trim();
+  if (!text) return;
+  chatInput.value = '';
+  addBubble('user', text);
+  history.push({ role: 'user', content: text });
+
+  addBubble('ai', '…');
+  const placeholder = chatLog.lastElementChild;
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ messages: history, companyName: demoCompanyName, trade: demoTrade })
+    });
+    const data = await res.json();
+    placeholder.remove();
+    addBubble('ai', data.text || 'Sorry, something went wrong.');
+    history.push({ role: 'assistant', content: data.text || '' });
+    if (data.demoMode) demoModeBanner.style.display = 'block';
+  } catch (err) {
+    placeholder.remove();
+    addBubble('ai', 'Sorry, something went wrong reaching the AI.');
+  }
+}
+
+sendBtn.addEventListener('click', sendMessage);
+chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
+const calcMissedCalls = document.getElementById('calcMissedCalls');
+const calcJobValue = document.getElementById('calcJobValue');
+const calcMissedCallsValue = document.getElementById('calcMissedCallsValue');
+const calcJobValueValue = document.getElementById('calcJobValueValue');
+const calcMonthlyLoss = document.getElementById('calcMonthlyLoss');
+const calcAnnualLoss = document.getElementById('calcAnnualLoss');
+
+const CALC_CONVERSION_RATE = 1 / 3;
+const CALC_WEEKS_PER_MONTH = 4.33;
+
+function formatCalcNumber(n) {
+  return Math.round(n).toLocaleString('en-GB');
+}
+
+function updateCalculator() {
+  const missedCalls = Number(calcMissedCalls.value);
+  const jobValue = Number(calcJobValue.value);
+
+  calcMissedCallsValue.textContent = missedCalls;
+  calcJobValueValue.textContent = formatCalcNumber(jobValue);
+
+  const monthlyLoss = missedCalls * CALC_WEEKS_PER_MONTH * CALC_CONVERSION_RATE * jobValue;
+  const annualLoss = monthlyLoss * 12;
+
+  calcMonthlyLoss.textContent = formatCalcNumber(monthlyLoss);
+  calcAnnualLoss.textContent = formatCalcNumber(annualLoss);
+}
+
+calcMissedCalls.addEventListener('input', updateCalculator);
+calcJobValue.addEventListener('input', updateCalculator);
+updateCalculator();
+const billingMonthlyBtn = document.getElementById('billingMonthlyBtn');
+const billingAnnualBtn = document.getElementById('billingAnnualBtn');
+const starterCard = document.querySelector('.pricing-grid .price-card:nth-child(1)');
+const growthCard = document.querySelector('.pricing-grid .price-card.featured');
+const starterPriceEl = starterCard.querySelector('.amount');
+const starterPeriodEl = starterCard.querySelector('.period');
+const growthPriceEl = growthCard.querySelector('.amount');
+const growthPeriodEl = growthCard.querySelector('.period');
+
+const ANNUAL_DISCOUNT = 0.15;
+const STARTER_MONTHLY = 119;
+const GROWTH_MONTHLY = 229;
+
+function setBillingPeriod(isAnnual) {
+  billingMonthlyBtn.classList.toggle('active', !isAnnual);
+  billingAnnualBtn.classList.toggle('active', isAnnual);
+
+  if (isAnnual) {
+    const starterEquiv = Math.round(STARTER_MONTHLY * (1 - ANNUAL_DISCOUNT));
+    const growthEquiv = Math.round(GROWTH_MONTHLY * (1 - ANNUAL_DISCOUNT));
+    starterPriceEl.textContent = `£${starterEquiv}`;
+    starterPeriodEl.textContent = '/ month, billed annually';
+    growthPriceEl.textContent = `£${growthEquiv}`;
+    growthPeriodEl.textContent = '/ month, billed annually';
+  } else {
+    starterPriceEl.textContent = `£${STARTER_MONTHLY}`;
+    starterPeriodEl.textContent = '/ month';
+    growthPriceEl.textContent = `£${GROWTH_MONTHLY}`;
+    growthPeriodEl.textContent = '/ month';
+  }
+}
+
+billingMonthlyBtn.addEventListener('click', () => setBillingPeriod(false));
+billingAnnualBtn.addEventListener('click', () => setBillingPeriod(true));
+// --- Visual polish: scroll-reveal, CTA pulse support, hero typing intro,
+// and a nav bar that condenses slightly once scrolled -- all skip their
+// animated state entirely when the visitor's system asks for reduced
+// motion, and the scroll-reveal is safe with JavaScript off too (nothing
+// is hidden until this script actually runs and adds js-reveal-ready).
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const siteHeader = document.querySelector('header');
+function updateHeaderScrollState() {
+  siteHeader.classList.toggle('scrolled', window.scrollY > 10);
+}
+window.addEventListener('scroll', updateHeaderScrollState, { passive: true });
+updateHeaderScrollState();
+
+document.body.classList.add('js-reveal-ready');
+const revealGroups = document.querySelectorAll('.steps, .feature-grid, .pricing-grid, .faq-list');
+revealGroups.forEach((group) => {
+  Array.from(group.children).forEach((child, i) => {
+    child.classList.add('reveal');
+    child.style.transitionDelay = prefersReducedMotion ? '0s' : `${i * 80}ms`;
+  });
+});
+document.querySelectorAll('.calc-card, .cta-banner, .guarantee-badge').forEach((el) => el.classList.add('reveal'));
+
+if (prefersReducedMotion || !('IntersectionObserver' in window)) {
+  document.querySelectorAll('.reveal').forEach((el) => el.classList.add('is-visible'));
+} else {
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.reveal').forEach((el) => revealObserver.observe(el));
+}
+
+function animateCountUp(el, endValue) {
+  const duration = 600;
+  const start = performance.now();
+  function tick(now) {
+    const progress = Math.min((now - start) / duration, 1);
+    el.textContent = formatCalcNumber(endValue * progress);
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+const calcCardEl = document.querySelector('.calc-card');
+if (calcCardEl && !prefersReducedMotion && 'IntersectionObserver' in window) {
+  const calcObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        animateCountUp(calcMonthlyLoss, Number(calcMonthlyLoss.textContent.replace(/,/g, '')));
+        animateCountUp(calcAnnualLoss, Number(calcAnnualLoss.textContent.replace(/,/g, '')));
+        calcObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.4 });
+  calcObserver.observe(calcCardEl);
+}
+
+(function playHeroTypingIntro() {
+  const firstBubble = chatLog.querySelector('.msg.ai');
+  if (!firstBubble || prefersReducedMotion) return;
+  firstBubble.style.display = 'none';
+  const indicator = document.createElement('div');
+  indicator.className = 'msg ai';
+  indicator.innerHTML = '<div class="bubble typing-indicator"><span></span><span></span><span></span></div>';
+  chatLog.insertBefore(indicator, firstBubble);
+  setTimeout(() => {
+    indicator.remove();
+    firstBubble.style.display = '';
+    firstBubble.classList.add('bubble-enter');
+  }, 900);
+})();
+
+
+
+</script>
+<script type="module">
+// Live, in-browser "talk to it now" voice demo -- lets a visitor talk to a
+// real Retell voice agent through their own mic, no phone number or sign-up
+// needed. Uses Retell's newer public-key web-call flow (RetellClient from
+// retell-client-js-sdk 3.x), loaded straight from a CDN since this project
+// has no frontend build step. The agent_id and public key both come from
+// /api/demo/voice-agent -- server.js creates the demo agent once (lazily,
+// the first time anyone tries this) and caches it, so this never creates a
+// new one per visitor. If RETELL_PUBLIC_KEY isn't set up on the server yet,
+// that route returns demoMode:true and this just shows a friendly fallback
+// message instead of a dead button.
+import { RetellClient } from 'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@3.0.1/+esm';
+
+
+const voiceDemoBtn = document.getElementById('voiceDemoBtn');
+const voiceDemoIdle = document.getElementById('voiceDemoIdle');
+const voiceDemoControls = document.getElementById('voiceDemoControls');
+const voiceDemoStatus = document.getElementById('voiceDemoStatus');
+const voiceDemoMuteBtn = document.getElementById('voiceDemoMuteBtn');
+const voiceDemoEndBtn = document.getElementById('voiceDemoEndBtn');
+const voiceDemoUnavailable = document.getElementById('voiceDemoUnavailable');
+
+let retellClient = null;
+let activeCall = null;
+let isMuted = false;
+
+function showUnavailable() {
+  voiceDemoIdle.style.display = 'none';
+  voiceDemoControls.style.display = 'none';
+  voiceDemoUnavailable.style.display = 'block';
+}
+
+function resetToIdle() {
+  voiceDemoControls.style.display = 'none';
+  voiceDemoIdle.style.display = 'flex';
+  voiceDemoBtn.disabled = false;
+  voiceDemoBtn.textContent = '🎤 Talk to it live';
+  isMuted = false;
+  voiceDemoMuteBtn.textContent = 'Mute';
+  activeCall = null;
+}
+
+async function startVoiceDemo() {
+  voiceDemoBtn.disabled = true;
+  voiceDemoBtn.textContent = 'Connecting…';
+
+  let data;
+  try {
+    const res = await fetch('/api/demo/voice-agent', { method: 'POST' });
+    data = await res.json();
+  } catch (err) {
+    console.error('Voice demo: failed to reach server:', err);
+    return showUnavailable();
+  }
+
+  if (!data || data.demoMode || !data.agentId || !data.publicKey) {
+    return showUnavailable();
+  }
+
+  try {
+    if (!retellClient) {
+      retellClient = new RetellClient({ key: data.publicKey });
+    }
+
+    activeCall = retellClient.createWebCall({
+      agent_id: data.agentId,
+      hooks: {
+        onStatus: (status) => {
+          if (status === 'live') {
+            voiceDemoIdle.style.display = 'none';
+            voiceDemoControls.style.display = 'flex';
+            voiceDemoStatus.textContent = '🔴 Live — say hello!';
+          } else if (status === 'connecting') {
+            voiceDemoStatus.textContent = 'Connecting…';
+          }
+        },
+        onEnd: () => resetToIdle(),
+        onError: (err) => {
+          console.error('Voice demo call error:', err);
+          resetToIdle();
+        },
+      },
+    });
+
+    await activeCall.ready;
+  } catch (err) {
+    console.error('Voice demo: could not start call (mic permission or connection issue):', err);
+    resetToIdle();
+  }
+}
+
+voiceDemoBtn.addEventListener('click', startVoiceDemo);
+
+voiceDemoMuteBtn.addEventListener('click', () => {
+  if (!activeCall) return;
+  isMuted = !isMuted;
+  if (isMuted) {
+    activeCall.mute();
+    voiceDemoMuteBtn.textContent = 'Unmute';
+  } else {
+    activeCall.unmute();
+    voiceDemoMuteBtn.textContent = 'Mute';
+  }
+});
+
+voiceDemoEndBtn.addEventListener('click', async () => {
+  if (activeCall) {
+    try { await activeCall.end(); } catch (err) { /* already ending/ended */ }
+  }
+  resetToIdle();
+});
+</script>
+
+
+</body>
+</html>
