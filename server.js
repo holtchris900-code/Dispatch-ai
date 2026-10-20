@@ -971,6 +971,17 @@ function serveStaticFile(req, res, urlPath) {
     '/success': 'success.html',
     '/client-login': 'client-login.html',
   };
+  '/plumbers': 'plumbers.html',
+'/electricians': 'electricians.html',
+966   const routeMap = {
+967     '/': 'index.html',
+968     '/onboard': 'onboard.html',
+969     '/dashboard': 'dashboard.html',
+970     '/success': 'success.html',
+971     '/client-login': 'client-login.html',
+972     '/plumbers': 'plumbers.html',
+973     '/electricians': 'electricians.html',
+974   };
   const relativePath = routeMap[urlPath] || urlPath.replace(/^\//, '');
   const filePath = path.join(PUBLIC_DIR, relativePath);
 
