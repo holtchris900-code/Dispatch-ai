@@ -4,35 +4,257 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dispatch AI — Never Miss Another Service Call</title>
+<meta name="description" content="Dispatch AI answers every call and chat for HVAC, plumbing and electrical businesses, 24/7 -- books the job straight into your calendar and flags true emergencies instantly. Already a customer? Sign in above.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/styles.css">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout concept: the page is mostly night. The sign-in card in the hero is
+   the one lit window in it, with a slow amber glow behind it -- everything
+   else stays quiet and card-based so that light reads as deliberate, the
+   way a porch light stands out on a dark street. */
+:root {
+  --bg: #0b0d10;
+  --surface: #15181d;
+  --surface-2: #1c2026;
+  --surface-line: #262b32;
+  --fg: #efe9dd;
+  --muted: #8e95a0;
+  --accent: #e3a855;
+  --accent-dim: #8a6a3a;
+  --accent-soft: rgba(227, 168, 85, 0.14);
+  --ok: #8fb37c;
+  --danger: #cf7a63;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { background: var(--bg); }
+body {
+  color: var(--fg);
+  font-family: "Inter", system-ui, sans-serif;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: 20px; padding-right: 20px; }
+h1, h2, h3 { font-family: "Fraunces", Georgia, serif; font-weight: 500; letter-spacing: -0.01em; text-wrap: balance; margin: 0; }
+em.accent, .accent { font-style: italic; font-weight: 500; color: var(--accent); }
+p { line-height: 1.6; color: var(--muted); margin: 0; }
+a { color: inherit; }
+ul { margin: 0; padding: 0; list-style: none; }
+
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-block: 20px;
+}
+.logo { font-family: "Fraunces", serif; font-size: 19px; font-weight: 500; text-decoration: none; color: var(--fg); letter-spacing: -0.01em; }
+.logo em { color: var(--accent); font-style: normal; }
+nav { display: flex; gap: 26px; align-items: center; }
+nav a { font-size: 13.5px; color: var(--muted); text-decoration: none; }
+nav a:hover { color: var(--fg); }
+
+.hero {
+  display: grid; grid-template-columns: 1.1fr 1fr; gap: 50px; align-items: start;
+  padding-block: clamp(20px, 5vw, 48px) 36px;
+}
+@media (max-width: 800px) { .hero { grid-template-columns: 1fr; gap: 32px; } }
+
+.eyebrow { font-size: 11.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-dim); margin-bottom: 14px; }
+.hero h1 { font-size: clamp(30px, 4.6vw, 48px); line-height: 1.1; }
+.hero .sub { font-size: 16px; margin-top: 16px; max-width: 48ch; }
+.hero-links { display: flex; gap: 22px; margin-top: 22px; align-items: center; flex-wrap: wrap; }
+.text-link { font-size: 13.5px; color: var(--fg); text-decoration: none; border-bottom: 1px solid var(--surface-line); padding-bottom: 2px; }
+.text-link:hover { border-color: var(--accent); }
+.stat-strip { display: flex; gap: 26px; margin-top: 28px; flex-wrap: wrap; }
+.stat b { display: block; font-family: "Fraunces", serif; font-size: 19px; font-weight: 500; }
+.stat span { font-size: 12px; color: var(--muted); }
+
+/* the lit window */
+.signin-card {
+  position: relative; background: var(--surface); border: 1px solid var(--surface-line);
+  border-radius: 18px; padding: 30px 26px; isolation: isolate;
+  animation: fadeUp 0.7s ease 0.1s both;
+}
+.signin-card::before {
+  content: ""; position: absolute; inset: -35% -35% auto -35%; height: 200px;
+  background: radial-gradient(closest-side, var(--accent-soft), transparent 70%);
+  z-index: -1; animation: glow 6s ease-in-out infinite;
+}
+@keyframes glow { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+.hero > .hero-copy { animation: fadeUp 0.7s ease both; }
+@media (prefers-reduced-motion: reduce) {
+  .signin-card, .hero > .hero-copy { animation: none; }
+  .signin-card::before { animation: none; }
+}
+
+.signin-kicker { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+.signin-card h2 { font-size: 21px; margin-bottom: 6px; }
+.signin-card > p { font-size: 13px; margin-bottom: 18px; }
+.field-row { display: flex; flex-direction: column; gap: 10px; }
+input[type="email"], input[type="text"] {
+  background: var(--bg); color: var(--fg); border: 1px solid var(--surface-line); border-radius: 9px;
+  padding: 11px 13px; font-size: 14px; font-family: inherit; width: 100%;
+}
+input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn { border: none; border-radius: 9px; padding: 11px 16px; font-size: 13.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.btn:disabled { opacity: 0.6; cursor: default; }
+.btn-primary { background: var(--accent); color: #1a1104; }
+.btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.btn-secondary { background: transparent; color: var(--fg); border: 1px solid var(--surface-line); }
+.btn-secondary:hover { border-color: var(--accent); }
+.btn-block { width: 100%; display: block; text-align: center; }
+.signin-status { font-size: 12.5px; margin-top: 10px; min-height: 16px; }
+.signin-status.ok { color: var(--ok); }
+.signin-status.err { color: var(--danger); }
+.signin-status a { color: var(--accent); font-weight: 600; }
+.signin-foot { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--surface-line); font-size: 12.5px; }
+.signin-foot a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-dim); }
+
+section { padding-block: 44px; }
+.section-head { max-width: 52ch; margin-bottom: 30px; }
+.section-head .eyebrow { margin-bottom: 8px; }
+.section-head h2 { font-size: clamp(23px, 3.2vw, 30px); }
+.section-head p { margin-top: 8px; font-size: 14.5px; }
+
+.panel {
+  background: var(--surface); border: 1px solid var(--surface-line); border-radius: 16px; padding: 24px;
+}
+
+/* Demo card -- real live chat + voice, same backend calls as before, restyled */
+.chat-card { position: relative; }
+.badge { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+.badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; animation: pulse 2s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) { .badge .dot { animation: none; } }
+
+.voice-demo { margin-bottom: 14px; }
+.voice-demo-idle { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.voice-demo-btn { font-size: 13.5px; }
+.voice-demo-hint { font-size: 12px; color: var(--muted); }
+.voice-demo-controls { display: none; align-items: center; gap: 12px; background: var(--surface-2); border-radius: 10px; padding: 10px 14px; }
+.voice-demo-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: pulse 1.2s infinite; }
+.voice-demo-status { font-size: 13px; flex: 1; }
+.voice-demo-icon-btn { background: var(--surface-line); color: var(--fg); border: none; border-radius: 7px; padding: 6px 10px; font-size: 12px; cursor: pointer; }
+.voice-demo-unavailable { display: none; font-size: 12.5px; color: var(--muted); }
+
+.demo-personalize-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.demo-personalize-row input { flex: 1; min-width: 140px; }
+.demo-personalize-row select { background: var(--bg); color: var(--fg); border: 1px solid var(--surface-line); border-radius: 9px; padding: 10px; font-size: 13px; font-family: inherit; }
+.demo-personalize-row .btn { white-space: nowrap; }
+.demo-personalized-note { display: none; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.demo-personalized-note a { color: var(--accent); cursor: pointer; }
+
+#chatLog { background: var(--bg); border: 1px solid var(--surface-line); border-radius: 12px; padding: 14px; height: 220px; overflow-y: auto; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
+.msg { display: flex; }
+.msg.user { justify-content: flex-end; }
+.bubble { max-width: 80%; padding: 9px 13px; border-radius: 12px; font-size: 13.5px; line-height: 1.5; }
+.msg.ai .bubble { background: var(--surface-2); color: var(--fg); }
+.msg.user .bubble { background: var(--accent); color: #1a1104; }
+.typing-indicator span { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); margin: 0 1px; animation: blink 1.2s infinite; }
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blink { 0%, 80%, 100% { opacity: 0.3; } 40% { opacity: 1; } }
+.chat-input-row { display: flex; gap: 8px; }
+.chat-input-row input { flex: 1; }
+.demo-mode-banner { display: none; margin-top: 10px; font-size: 11.5px; color: var(--muted); background: var(--surface-2); border-radius: 8px; padding: 8px 10px; }
+
+/* Calculator */
+.calc-card { display: grid; grid-template-columns: 1.2fr 1fr; gap: 28px; align-items: center; }
+@media (max-width: 700px) { .calc-card { grid-template-columns: 1fr; } }
+.calc-field { margin-bottom: 16px; }
+.calc-field-top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; }
+.calc-field-top span.calc-field-value { color: var(--accent); font-weight: 600; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.calc-assumption { font-size: 12px; margin-top: 4px; }
+.calc-result { background: var(--surface-2); border-radius: 12px; padding: 22px; text-align: center; }
+.calc-result-label { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+.calc-result-amount { font-family: "Fraunces", serif; font-size: 34px; color: var(--accent); }
+.calc-result-annual { font-size: 13px; color: var(--muted); margin: 6px 0 16px; }
+
+/* Steps / features / cards grid */
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 760px) { .grid-3, .grid-4 { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--surface-line); border-radius: 14px; padding: 20px 18px; }
+.reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.7s cubic-bezier(.2,.7,.3,1), transform 0.7s cubic-bezier(.2,.7,.3,1); }
+.reveal.is-visible { opacity: 1; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) { .reveal { transition: none; opacity: 1 !important; transform: none !important; } }
+.card .num { font-family: "Fraunces", serif; font-size: 13px; color: var(--accent-dim); margin-bottom: 8px; }
+.card h3 { font-size: 15.5px; margin-bottom: 7px; font-weight: 500; }
+.card p { font-size: 13px; }
+.integration-badge { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 11.5px; color: var(--accent); background: var(--accent-soft); padding: 5px 9px; border-radius: 7px; }
+.integration-badge svg { width: 14px; height: 14px; }
+
+.trust-row { display: flex; flex-wrap: wrap; gap: 10px 26px; }
+.trust-item { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--muted); max-width: 280px; }
+.trust-item .dot { color: var(--accent); flex-shrink: 0; }
+.trust-item b { color: var(--fg); font-weight: 500; }
+
+/* Pricing */
+.billing-toggle { display: inline-flex; background: var(--surface-2); border-radius: 10px; padding: 4px; margin: 10px 0 24px; gap: 4px; }
+.billing-toggle-btn { background: transparent; border: none; color: var(--muted); font-size: 12.5px; font-weight: 600; padding: 7px 14px; border-radius: 7px; cursor: pointer; font-family: inherit; }
+.billing-toggle-btn.active { background: var(--accent); color: #1a1104; }
+.billing-save-badge { font-size: 10.5px; margin-left: 4px; opacity: 0.85; }
+.pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 860px) { .pricing-grid { grid-template-columns: 1fr; } }
+.price-card { position: relative; background: var(--surface); border: 1px solid var(--surface-line); border-radius: 16px; padding: 24px 20px; display: flex; flex-direction: column; }
+.price-card.featured { border-color: var(--accent-dim); box-shadow: 0 0 0 1px var(--accent-dim), 0 16px 40px -20px var(--accent-soft); }
+.price-badge { position: absolute; top: -11px; left: 20px; background: var(--accent); color: #1a1104; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.price-card h3 { font-size: 18px; }
+.price-desc { font-size: 12.5px; margin: 6px 0 14px; min-height: 32px; }
+.price-amount { display: flex; align-items: baseline; gap: 4px; font-family: "Fraunces", serif; }
+.price-amount .amount { font-size: 30px; color: var(--fg); }
+.price-amount .period { font-size: 12.5px; color: var(--muted); }
+.price-note { font-size: 11.5px; color: var(--muted); margin: 6px 0 14px; }
+.price-features { margin-bottom: 18px; flex: 1; }
+.price-features li { font-size: 13px; color: var(--muted); display: flex; gap: 8px; margin-bottom: 8px; }
+.price-features .check { color: var(--ok); }
+.price-anchor, .trial-note, .pricing-footnote { font-size: 13px; margin-top: 10px; max-width: 70ch; }
+.guarantee-badge { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--surface-line); border-radius: 14px; padding: 18px 20px; margin-top: 24px; }
+.guarantee-icon { font-size: 20px; }
+.guarantee-badge p { font-size: 13.5px; color: var(--fg); }
+
+/* FAQ */
+.faq-list { display: flex; flex-direction: column; gap: 10px; }
+.faq-item { background: var(--surface); border: 1px solid var(--surface-line); border-radius: 12px; padding: 4px 18px; }
+.faq-item summary { padding: 14px 0; font-size: 14px; font-weight: 600; cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after { content: "+"; color: var(--accent); font-family: "Fraunces", serif; font-size: 18px; flex-shrink: 0; }
+.faq-item[open] summary::after { content: "–"; }
+.faq-item p { font-size: 13.5px; padding-bottom: 16px; }
+
+.cta-banner { text-align: center; background: linear-gradient(180deg, var(--surface), var(--bg)); border: 1px solid var(--surface-line); border-radius: 20px; padding: 46px 24px; }
+.cta-banner h2 { font-size: clamp(24px, 3.4vw, 32px); margin-bottom: 10px; }
+.cta-banner p { max-width: 50ch; margin: 0 auto 22px; }
+
+footer { padding-block: 26px 44px; border-top: 1px solid var(--surface-line); margin-top: 10px; }
+footer p { font-size: 12.5px; }
+footer .trade-links { margin-top: 8px; font-size: 12px; }
+footer .trade-links a { color: var(--accent); text-decoration: none; }
+</style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <a class="logo" href="/">Dispatch<span>AI</span></a>
+    <a class="logo" href="/">Dispatch<em>AI</em></a>
     <nav>
-      <a href="#demo">Try the demo</a>
+      <a href="#how">How it works</a>
+      <a href="#demo">Live demo</a>
       <a href="#pricing">Pricing</a>
-      <a class="nav-cta" href="/onboard">Get started</a>
     </nav>
   </header>
 
-  <section class="hero">
-    <div>
-      <div class="eyebrow">● Built for HVAC, plumbing &amp; electrical</div>
-      <h1>Every missed call is a <span class="accent">customer calling your competitor</span> instead.</h1>
-      <p class="sub">Dispatch AI answers every call and chat, books the job, and flags emergencies — 24/7, even when your office is closed. The demo on the right is a real, working AI agent.</p>
-      <div class="hero-actions">
-        <a class="btn btn-primary" href="/onboard">Set up my company's AI agent</a>
-        <a class="btn btn-secondary" href="#pricing">See pricing</a>
+  <section class="hero" id="top">
+    <div class="hero-copy">
+      <div class="eyebrow">AI phone &amp; chat for UK trades</div>
+      <h1>Your phone line, <span class="accent">lit up</span> at 3am.</h1>
+      <p class="sub">Dispatch AI answers every call and chat for HVAC, plumbing and electrical businesses, books the job, and wakes you only for the ones that actually matter — 24 hours a day, including the ones you're asleep for.</p>
+      <div class="hero-links">
+        <a class="text-link" href="#how">See how it works</a>
+        <a class="text-link" href="#demo">Try the live demo</a>
+        <a class="text-link" href="#pricing">View pricing</a>
       </div>
-      <div class="fine-print">Try chatting with the demo AI first — it's the same technology your customers would talk to.</div>
-      <div class="fine-print">Flat monthly pricing, not per-minute billing — plus a 30-day money-back guarantee if it's not working out.</div>
-
-
       <div class="stat-strip">
         <div class="stat"><b>24/7</b><span>Always answering</span></div>
         <div class="stat"><b>&lt;2 sec</b><span>Typical response time</span></div>
@@ -40,10 +262,29 @@
       </div>
     </div>
 
-    <div class="chat-card" id="demo">
+    <div class="signin-card">
+      <div class="signin-kicker">Already a customer</div>
+      <h2>Straight to your jobs.</h2>
+      <p>Enter the email on your account and we'll send a one-tap sign-in link — no password to remember.</p>
+      <form class="field-row" id="signinForm">
+        <input type="email" id="signinEmail" placeholder="you@yourbusiness.co.uk" required>
+        <button class="btn btn-primary" id="signinBtn" type="submit">Email me a sign-in link</button>
+      </form>
+      <div class="signin-status" id="signinStatus"></div>
+      <div class="signin-foot">New to Dispatch AI? <a href="/onboard">Start a 14-day free trial</a></div>
+    </div>
+  </section>
+
+  <section id="demo">
+    <div class="section-head reveal">
+      <div class="eyebrow">Try it yourself</div>
+      <h2>This is a real, working AI agent</h2>
+      <p>Not a mockup — type a message or tap to talk, and a live AI answers exactly like it would for one of your customers.</p>
+    </div>
+    <div class="panel chat-card reveal">
       <div class="badge"><span class="dot"></span> <span id="demoBadgeText">Live demo — "Summit Air &amp; Plumbing" (fictional demo company)</span></div>
 
-            <div class="voice-demo" id="voiceDemo">
+      <div class="voice-demo" id="voiceDemo">
         <div class="voice-demo-idle" id="voiceDemoIdle">
           <button class="btn btn-primary voice-demo-btn" id="voiceDemoBtn" type="button">🎤 Talk to it live</button>
           <span class="voice-demo-hint">Tap to talk through your mic — no sign-up, no dialing.</span>
@@ -52,14 +293,14 @@
           <span class="voice-demo-live-dot"></span>
           <span class="voice-demo-status" id="voiceDemoStatus">Connecting…</span>
           <button class="voice-demo-icon-btn" id="voiceDemoMuteBtn" type="button">Mute</button>
-          <button class="voice-demo-icon-btn voice-demo-end" id="voiceDemoEndBtn" type="button">End call</button>
+          <button class="voice-demo-icon-btn" id="voiceDemoEndBtn" type="button">End call</button>
         </div>
         <div class="voice-demo-unavailable" id="voiceDemoUnavailable">
           Voice demo is being set up — try the text chat below in the meantime.
         </div>
       </div>
 
-       <div class="demo-personalize" id="demoPersonalize">
+      <div class="demo-personalize" id="demoPersonalize">
         <div class="demo-personalize-row">
           <input id="demoCompanyInput" type="text" placeholder="Your company name" maxlength="60" />
           <select id="demoTradeInput">
@@ -89,107 +330,105 @@
     </div>
   </section>
 
-    <section class="calc-section">
-    <div class="calc-card">
-      <div class="calc-header">
-        <h2>What are missed calls costing you right now?</h2>
-        <p class="lead">Drag the sliders to match your business — the numbers update instantly.</p>
+  <section>
+    <div class="panel calc-card reveal">
+      <div>
+        <h2 style="font-size:22px; margin-bottom:8px;">What are missed calls costing you right now?</h2>
+        <p style="margin-bottom:18px;">Drag the sliders to match your business — the numbers update instantly.</p>
+        <div class="calc-field">
+          <div class="calc-field-top"><label for="calcMissedCalls">Missed calls per week</label><span class="calc-field-value"><span id="calcMissedCallsValue">5</span></span></div>
+          <input type="range" id="calcMissedCalls" min="1" max="30" value="5" step="1">
+        </div>
+        <div class="calc-field">
+          <div class="calc-field-top"><label for="calcJobValue">Average job value</label><span class="calc-field-value">£<span id="calcJobValueValue">150</span></span></div>
+          <input type="range" id="calcJobValue" min="50" max="1000" value="150" step="10">
+        </div>
+        <p class="calc-assumption">Based on roughly 1 in 3 missed calls turning into a paying job if answered — a conservative estimate for home service businesses.</p>
       </div>
-      <div class="calc-grid">
-        <div class="calc-inputs">
-          <div class="calc-field">
-            <div class="calc-field-top">
-              <label for="calcMissedCalls">Missed calls per week</label>
-              <span class="calc-field-value"><span id="calcMissedCallsValue">5</span></span>
-            </div>
-            <input type="range" id="calcMissedCalls" min="1" max="30" value="5" step="1">
-          </div>
-          <div class="calc-field">
-            <div class="calc-field-top">
-              <label for="calcJobValue">Average job value</label>
-              <span class="calc-field-value">£<span id="calcJobValueValue">150</span></span>
-            </div>
-            <input type="range" id="calcJobValue" min="50" max="1000" value="150" step="10">
-          </div>
-          <p class="calc-assumption">Based on roughly 1 in 3 missed calls turning into a paying job if answered — a conservative estimate for home service businesses.</p>
-        </div>
-        <div class="calc-result">
-          <div class="calc-result-label">Estimated revenue walking out the door</div>
-          <div class="calc-result-amount"><span class="calc-result-currency">£</span><span id="calcMonthlyLoss">1,083</span><span class="calc-result-period">/month</span></div>
-          <div class="calc-result-annual">£<span id="calcAnnualLoss">13,000</span> per year</div>
-          <a class="btn btn-primary btn-block" href="/onboard">Stop losing this revenue</a>
-        </div>
+      <div class="calc-result">
+        <div class="calc-result-label">Estimated revenue walking out the door</div>
+        <div class="calc-result-amount">£<span id="calcMonthlyLoss">1,083</span><span style="font-size:13px; color:var(--muted);">/month</span></div>
+        <div class="calc-result-annual">£<span id="calcAnnualLoss">13,000</span> per year</div>
+        <a class="btn btn-primary btn-block" href="/onboard">Stop losing this revenue</a>
       </div>
     </div>
   </section>
 
-<section class="section-tight">
-    <h2>Live in three steps</h2>
-    <p class="lead">No developers, no long onboarding calls — just answer some questions about how your business runs.</p>
-    <div class="steps">
-      <div class="step-card">
-        <div class="step-num">1</div>
-        <h3>Tell us about your business</h3>
-        <p>A short form covers your services, pricing, hours, and how you want emergencies handled.</p>
-      </div>
-      <div class="step-card">
-        <div class="step-num">2</div>
-        <h3>Review your AI's script</h3>
-        <p>We draft a script from your answers. You read it, edit anything, and approve it before it ever talks to a customer.</p>
-      </div>
-      <div class="step-card">
-        <div class="step-num">3</div>
-        <h3>Go live</h3>
-        <p>Connect your phone line and website chat, and your AI agent starts answering — day or night.</p>
-      </div>
+  <section id="how">
+    <div class="section-head reveal">
+      <div class="eyebrow">Live in three steps</div>
+      <h2>No developers, no long onboarding calls</h2>
+      <p>Just answer some questions about how your business runs.</p>
+    </div>
+    <div class="grid-3">
+      <div class="card reveal"><div class="num">01</div><h3>Tell us about your business</h3><p>A short form covers your services, pricing, hours, and how you want emergencies handled.</p></div>
+      <div class="card reveal"><div class="num">02</div><h3>Review your AI's script</h3><p>We draft a script from your answers. You read it, edit anything, and approve it before it ever talks to a customer.</p></div>
+      <div class="card reveal"><div class="num">03</div><h3>Go live</h3><p>Connect your phone line and website chat, and your AI agent starts answering — day or night.</p></div>
     </div>
   </section>
 
-  <section class="section">
-    <h2>Built for the way home service calls actually go</h2>
-    <p class="lead">Answers every call, books directly into your calendar, flags true emergencies, and lets you review the script before it ever talks to a real customer.</p>
-    <div class="feature-grid">
-      <div class="feature-card">
+  <section>
+    <div class="section-head reveal">
+      <div class="eyebrow">What it actually does</div>
+      <h2>Built for the way home service calls actually go</h2>
+      <p>Answers every call, books directly into your calendar, flags true emergencies, and lets you review the script before it ever talks to a real customer.</p>
+    </div>
+    <div class="grid-4">
+      <div class="card reveal">
         <h3>Answers every call</h3>
         <p>No more missed calls going to voicemail — or straight to your competitor.</p>
       </div>
-      <div class="feature-card">
+      <div class="card reveal">
         <h3>Books the job</h3>
-        <p>Connect your Google Calendar and it checks real availability and creates the appointment on the spot -- no back-and-forth needed.</p>
+        <p>Connect your Google Calendar and it checks real availability and creates the appointment on the spot — no back-and-forth needed.</p>
         <div class="integration-badge">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"></rect><line x1="3" y1="9.5" x2="21" y2="9.5"></line><line x1="7.5" y1="2.5" x2="7.5" y2="6.5"></line><line x1="16.5" y1="2.5" x2="16.5" y2="6.5"></line></svg>
-          <span>Works with Google Calendar</span>
+          <span>Google Calendar</span>
         </div>
       </div>
-      <div class="feature-card">
+      <div class="card reveal">
         <h3>Flags emergencies</h3>
-        <p>You define what counts as urgent for your trade — no heat in freezing weather, a burst pipe or active flooding, exposed wiring or a burning smell — and it's handled differently from a routine booking.</p>
-        <p style="margin-top:8px; font-size:13px; color:#4b5563;">The moment it's flagged, your on-call number gets a text immediately — or you get an email alert if you haven't set one up — so it's never just logged and left until morning.</p>
+        <p>You define what counts as urgent — a burst pipe, no heat in freezing weather, exposed wiring — and your on-call number gets a text the moment it happens.</p>
       </div>
-      <div class="feature-card">
+      <div class="card reveal">
         <h3>You stay in control</h3>
         <p>Every script is written for your business and reviewed by you before it goes live.</p>
       </div>
     </div>
   </section>
 
-  <section class="section" id="pricing">
-    <h2>Simple, transparent pricing</h2>
-    <p class="lead">No enterprise sales calls, no seat minimums — just a flat monthly price built for one-location home service businesses. Billed monthly in GBP, cancel anytime.</p>
-    <p class="price-anchor">Flat monthly rate, not per-minute billing — your price is the same whether a call lasts 30 seconds or 10 minutes.</p>
+  <section>
+    <div class="section-head reveal">
+      <div class="eyebrow">Worth knowing</div>
+      <h2>No fine print to hunt for</h2>
+      <p>Here's exactly what you're agreeing to.</p>
+    </div>
+    <div class="trust-row">
+      <div class="trust-item reveal"><span class="dot">●</span><span><b>14-day free trial.</b> Not charged until it ends.</span></div>
+      <div class="trust-item reveal"><span class="dot">●</span><span><b>30-day money-back guarantee.</b> No questions asked.</span></div>
+      <div class="trust-item reveal"><span class="dot">●</span><span><b>Your data stays yours.</b> Never sold, never shared.</span></div>
+      <div class="trust-item reveal"><span class="dot">●</span><span><b>Always discloses it's AI.</b> Every call, every time.</span></div>
+    </div>
+  </section>
 
-    <p class="price-anchor">A part-time receptionist typically costs £1,500+/month, and traditional phone-answering services often charge £150–£400/month for business-hours-only coverage. Dispatch AI starts at £119/month for round-the-clock coverage.</p>
-    <p class="trial-note">Every plan starts with a <b>14-day free trial</b> — you're not charged until it ends, and you can cancel any time before that with nothing owed.</p>
-        <div class="billing-toggle" id="billingToggle">
+  <section id="pricing">
+    <div class="section-head reveal">
+      <div class="eyebrow">Simple, transparent pricing</div>
+      <h2>Built for one-location home service businesses</h2>
+      <p>No enterprise sales calls, no seat minimums. Billed monthly in GBP, cancel anytime.</p>
+    </div>
+    <p class="price-anchor">Flat monthly rate, not per-minute billing — your price is the same whether a call lasts 30 seconds or 10 minutes. A part-time receptionist typically costs £1,500+/month; Dispatch AI starts at £119/month for round-the-clock coverage.</p>
+    <p class="trial-note">Every plan starts with a <b style="color:var(--fg);">14-day free trial</b> — you're not charged until it ends, and you can cancel any time before that with nothing owed.</p>
+    <div class="billing-toggle" id="billingToggle">
       <button class="billing-toggle-btn active" id="billingMonthlyBtn" type="button">Monthly</button>
       <button class="billing-toggle-btn" id="billingAnnualBtn" type="button">Annual <span class="billing-save-badge">Save 15%</span></button>
     </div>
-<div class="pricing-grid">
-      <div class="price-card">
+    <div class="pricing-grid">
+      <div class="price-card reveal">
         <h3>Starter</h3>
         <p class="price-desc">For a single line that just needs to stop missing calls.</p>
         <div class="price-amount"><span class="amount">£119</span><span class="period">/ month</span></div>
-        <p style="margin:-6px 0 12px; font-size:12.5px; color:#6b7280;">≈ 50 typical calls a month, assuming about 5 minutes each</p>
+        <p class="price-note">≈ 50 typical calls a month, assuming about 5 minutes each</p>
         <ul class="price-features">
           <li><span class="check">✓</span> 250 call &amp; chat minutes / month</li>
           <li><span class="check">✓</span> One phone line + website chat</li>
@@ -199,12 +438,12 @@
         <a class="btn btn-secondary btn-block" href="/onboard">Start free trial</a>
       </div>
 
-      <div class="price-card featured">
+      <div class="price-card featured reveal">
         <div class="price-badge">Most popular</div>
         <h3>Growth</h3>
         <p class="price-desc">The right fit for most single-location HVAC, plumbing &amp; electrical shops.</p>
         <div class="price-amount"><span class="amount">£229</span><span class="period">/ month</span></div>
-        <p style="margin:-6px 0 12px; font-size:12.5px; color:#6b7280;">≈ 150 typical calls a month, assuming about 5 minutes each</p>
+        <p class="price-note">≈ 150 typical calls a month, assuming about 5 minutes each</p>
         <ul class="price-features">
           <li><span class="check">✓</span> 750 call &amp; chat minutes / month</li>
           <li><span class="check">✓</span> Everything in Starter</li>
@@ -215,7 +454,7 @@
         <a class="btn btn-primary btn-block" href="/onboard">Start free trial</a>
       </div>
 
-      <div class="price-card">
+      <div class="price-card reveal">
         <h3>Multi-Location</h3>
         <p class="price-desc">For businesses running more than one location or phone line.</p>
         <div class="price-amount"><span class="amount">Custom</span></div>
@@ -228,16 +467,18 @@
         <a class="btn btn-secondary btn-block" href="/onboard">Get in touch</a>
       </div>
     </div>
-        <div class="guarantee-badge">
+    <div class="guarantee-badge reveal">
       <span class="guarantee-icon">🛡️</span>
       <p><b>Try it free for 14 days.</b> If Dispatch AI isn't pulling its weight in your first 30 days after that, tell us and we'll refund you in full — no questions asked.</p>
     </div>
-<p class="pricing-footnote">Overage minutes beyond your plan's allowance are billed at £0.30–£0.35/minute. No long-term contracts — cancel your subscription any time and billing stops immediately.</p>
+    <p class="pricing-footnote">Overage minutes beyond your plan's allowance are billed at £0.30–£0.35/minute. No long-term contracts — cancel your subscription any time and billing stops immediately.</p>
   </section>
 
-  <section class="section">
-    <h2>Common questions</h2>
-    <p class="lead">The things most owners ask before they hand their phone line to an AI.</p>
+  <section>
+    <div class="section-head reveal">
+      <div class="eyebrow">Common questions</div>
+      <h2>The things most owners ask first</h2>
+    </div>
     <div class="faq-list">
       <details class="faq-item">
         <summary>What if it doesn't know the answer to something?</summary>
@@ -263,7 +504,6 @@
         <summary>What if I'm not happy after my trial?</summary>
         <p>You're covered by a 30-day money-back guarantee: if it's not working out within 30 days of your first charge, tell us and we'll refund that payment in full, no questions asked. After that, cancelling any time simply stops future billing.</p>
       </details>
-
       <details class="faq-item">
         <summary>Can we review what it will say before it goes live?</summary>
         <p>Always. Every script is drafted from your own answers, and you read, edit, and approve it before it's ever used on a real call or chat — the same review applies any time you edit it yourself later.</p>
@@ -279,18 +519,61 @@
     </div>
   </section>
 
-  <section class="section">
-    <div class="cta-banner">
+  <section>
+    <div class="cta-banner reveal">
       <h2>Stop losing jobs to a missed call.</h2>
       <p>Set up your AI agent this afternoon and see exactly what it will say to your customers before it ever answers a real call.</p>
       <a class="btn btn-primary" href="/onboard">Set up my company's AI agent</a>
     </div>
   </section>
 
-  <footer>Dispatch AI — AI phone &amp; chat agents for home service businesses.</footer>
+  <footer>
+    <p>Dispatch AI — AI phone &amp; chat agents for home service businesses.</p>
+    <p class="trade-links">Also built specifically for <a href="/plumbers">plumbers</a> and <a href="/electricians">electricians</a>.</p>
+  </footer>
 </div>
 
 <script>
+// --- Sign-in (replaces the standalone /client-login page as the main entry
+// point) -- calls the exact same backend route and reads the exact same
+// response shape as public/client-login.html always has, just themed to
+// match this page and shown as the hero's main call to action instead of a
+// separate page.
+const signinForm = document.getElementById('signinForm');
+const signinBtn = document.getElementById('signinBtn');
+const signinStatus = document.getElementById('signinStatus');
+signinForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('signinEmail').value.trim();
+  if (!email) return;
+  signinBtn.disabled = true;
+  signinBtn.textContent = 'Sending…';
+  signinStatus.className = 'signin-status';
+  signinStatus.textContent = '';
+  try {
+    const res = await fetch('/api/client-portal/request-login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: email }),
+    });
+    const data = await res.json();
+    if (data.demoMode) {
+      signinStatus.className = 'signin-status ok';
+      signinStatus.innerHTML = (data.message || 'Demo mode:') + ' <a href="' + data.loginUrl + '">Use this link now →</a>';
+    } else {
+      signinStatus.className = 'signin-status ok';
+      signinStatus.textContent = "If that email is on a Dispatch AI account, a sign-in link is on its way — check your inbox.";
+    }
+  } catch (err) {
+    signinStatus.className = 'signin-status err';
+    signinStatus.textContent = 'Something went wrong. Try again in a moment.';
+  } finally {
+    signinBtn.disabled = false;
+    signinBtn.textContent = 'Email me a sign-in link';
+  }
+});
+
+// --- Live chat demo (unchanged logic from the previous homepage) ----------
 const chatLog = document.getElementById('chatLog');
 const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
@@ -377,6 +660,8 @@ async function sendMessage() {
 
 sendBtn.addEventListener('click', sendMessage);
 chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
+
+// --- Calculator (unchanged logic) ------------------------------------------
 const calcMissedCalls = document.getElementById('calcMissedCalls');
 const calcJobValue = document.getElementById('calcJobValue');
 const calcMissedCallsValue = document.getElementById('calcMissedCallsValue');
@@ -408,6 +693,8 @@ function updateCalculator() {
 calcMissedCalls.addEventListener('input', updateCalculator);
 calcJobValue.addEventListener('input', updateCalculator);
 updateCalculator();
+
+// --- Pricing billing toggle (unchanged logic, real numbers) ---------------
 const billingMonthlyBtn = document.getElementById('billingMonthlyBtn');
 const billingAnnualBtn = document.getElementById('billingAnnualBtn');
 const starterCard = document.querySelector('.pricing-grid .price-card:nth-child(1)');
@@ -442,42 +729,25 @@ function setBillingPeriod(isAnnual) {
 
 billingMonthlyBtn.addEventListener('click', () => setBillingPeriod(false));
 billingAnnualBtn.addEventListener('click', () => setBillingPeriod(true));
-// --- Visual polish: scroll-reveal, CTA pulse support, hero typing intro,
-// and a nav bar that condenses slightly once scrolled -- all skip their
-// animated state entirely when the visitor's system asks for reduced
-// motion, and the scroll-reveal is safe with JavaScript off too (nothing
-// is hidden until this script actually runs and adds js-reveal-ready).
+
+// --- Scroll reveal, staggered within each group -----------------------------
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-const siteHeader = document.querySelector('header');
-function updateHeaderScrollState() {
-  siteHeader.classList.toggle('scrolled', window.scrollY > 10);
-}
-window.addEventListener('scroll', updateHeaderScrollState, { passive: true });
-updateHeaderScrollState();
-
-document.body.classList.add('js-reveal-ready');
-const revealGroups = document.querySelectorAll('.steps, .feature-grid, .pricing-grid, .faq-list');
-revealGroups.forEach((group) => {
+document.querySelectorAll('.grid-3, .grid-4, .trust-row, .pricing-grid, .faq-list').forEach((group) => {
   Array.from(group.children).forEach((child, i) => {
     child.classList.add('reveal');
-    child.style.transitionDelay = prefersReducedMotion ? '0s' : `${i * 80}ms`;
+    child.style.transitionDelay = prefersReducedMotion ? '0s' : `${i * 70}ms`;
   });
 });
-document.querySelectorAll('.calc-card, .cta-banner, .guarantee-badge').forEach((el) => el.classList.add('reveal'));
-
-if (prefersReducedMotion || !('IntersectionObserver' in window)) {
-  document.querySelectorAll('.reveal').forEach((el) => el.classList.add('is-visible'));
-} else {
+const revealEls = document.querySelectorAll('.reveal');
+if ('IntersectionObserver' in window && !prefersReducedMotion) {
   const revealObserver = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-visible');
-        revealObserver.unobserve(entry.target);
-      }
+      if (entry.isIntersecting) { entry.target.classList.add('is-visible'); revealObserver.unobserve(entry.target); }
     });
   }, { threshold: 0.15 });
-  document.querySelectorAll('.reveal').forEach((el) => revealObserver.observe(el));
+  revealEls.forEach((el) => revealObserver.observe(el));
+} else {
+  revealEls.forEach((el) => el.classList.add('is-visible'));
 }
 
 function animateCountUp(el, endValue) {
@@ -515,26 +785,13 @@ if (calcCardEl && !prefersReducedMotion && 'IntersectionObserver' in window) {
   setTimeout(() => {
     indicator.remove();
     firstBubble.style.display = '';
-    firstBubble.classList.add('bubble-enter');
   }, 900);
 })();
-
-
-
 </script>
 <script type="module">
-// Live, in-browser "talk to it now" voice demo -- lets a visitor talk to a
-// real Retell voice agent through their own mic, no phone number or sign-up
-// needed. Uses Retell's newer public-key web-call flow (RetellClient from
-// retell-client-js-sdk 3.x), loaded straight from a CDN since this project
-// has no frontend build step. The agent_id and public key both come from
-// /api/demo/voice-agent -- server.js creates the demo agent once (lazily,
-// the first time anyone tries this) and caches it, so this never creates a
-// new one per visitor. If RETELL_PUBLIC_KEY isn't set up on the server yet,
-// that route returns demoMode:true and this just shows a friendly fallback
-// message instead of a dead button.
+// Live, in-browser "talk to it now" voice demo -- unchanged logic from the
+// previous homepage, see its own comments there for the full explanation.
 import { RetellClient } from 'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@3.0.1/+esm';
-
 
 const voiceDemoBtn = document.getElementById('voiceDemoBtn');
 const voiceDemoIdle = document.getElementById('voiceDemoIdle');
@@ -634,7 +891,5 @@ voiceDemoEndBtn.addEventListener('click', async () => {
   resetToIdle();
 });
 </script>
-
-
 </body>
 </html>
