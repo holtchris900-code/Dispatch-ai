@@ -961,7 +961,6 @@ function sendAuthChallenge(res) {
   });
   res.end('Authentication required.');
 }
-
 function serveStaticFile(req, res, urlPath) {
   // Map "/" -> index.html, "/onboard" -> onboard.html, "/dashboard" -> dashboard.html
   const routeMap = {
@@ -970,19 +969,11 @@ function serveStaticFile(req, res, urlPath) {
     '/dashboard': 'dashboard.html',
     '/success': 'success.html',
     '/client-login': 'client-login.html',
+    '/plumbers': 'plumbers.html',
+    '/electricians': 'electricians.html',
   };
-  '/plumbers': 'plumbers.html',
-'/electricians': 'electricians.html',
-966   const routeMap = {
-967     '/': 'index.html',
-968     '/onboard': 'onboard.html',
-969     '/dashboard': 'dashboard.html',
-970     '/success': 'success.html',
-971     '/client-login': 'client-login.html',
-972     '/plumbers': 'plumbers.html',
-973     '/electricians': 'electricians.html',
-974   };
   const relativePath = routeMap[urlPath] || urlPath.replace(/^\//, '');
+
   const filePath = path.join(PUBLIC_DIR, relativePath);
 
   // Prevent path traversal outside the public directory.
