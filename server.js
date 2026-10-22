@@ -1222,6 +1222,25 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { received: true });
     }
 
+    // --- Internal: autonomous email-marketing agent trigger ---------------
+    // Fired once a day by a scheduled task that hits this app's own live
+    // URL -- not by anything running inside this process -- so it keeps
+    // working through Render restarts/redeploys/free-tier spin-downs
+    // instead of relying on an in-process timer that would silently stop.
+    // Deliberately NOT behind isProtectedPath's dashboard Basic Auth (no
+    // human is there every day to type a password); it has its own check
+    // instead, and that check fails CLOSED -- with no AGENT_RUN_SECRET set
+    // at all, every request is rejected rather than let through on a
+    // missing or guessable secret.
+    if (pathname === '/api/internal/agents/email-marketing/run' && req.method === 'POST') {
+      if (!checkAgentRunSecret(req)) {
+        res.writeHead(401, { 'content-type': 'text/plain' });
+        return res.end('Unauthorized');
+      }
+      const summary = await runEmailMarketingAgent();
+      return sendJson(res, 200, summary);
+    }
+
     // --- Embeddable website chat widget (runs on a client's OWN site) -----
     // Browsers send a preflight OPTIONS request before a cross-origin POST
     // with a JSON content-type -- this has to succeed with the right CORS
@@ -2611,6 +2630,74 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ...result, conversation: updated });
     }
 
+    // --- Autonomous email-marketing agent (founder-only dashboard view) ---
+    // These sit under /api/clients/marketing/... specifically so they
+    // inherit the dashboard's existing Basic Auth gate (isProtectedPath
+    // matches anything starting with /api/clients) with no extra wiring.
+
+    // Everything the daily agent drafted but held back for a human look --
+    // right now that's just the 'win_back_cancelled' kind, see
+    // runEmailMarketingAgent below for why. Enriches each draft with the
+    // client's company name since marketingEmails.json only stores a
+    // clientId, not a copy of the client's own details.
+    if (pathname === '/api/clients/marketing/pending' && req.method === 'GET') {
+      const pending = db.listPendingMarketingEmails().map((m) => ({
+        ...m,
+        companyName: db.getClient(m.clientId)?.intake?.companyName || '(unknown business)',
+      }));
+      return sendJson(res, 200, pending);
+    }
+
+    // A simple activity log for the dashboard -- what the agent has drafted,
+    // sent, or had rejected recently, newest first. Capped at 50 so this
+    // never grows unbounded in the response as marketingEmails.json grows.
+    if (pathname === '/api/clients/marketing/recent' && req.method === 'GET') {
+      const recent = db.listMarketingEmails().slice(0, 50).map((m) => ({
+        ...m,
+        companyName: db.getClient(m.clientId)?.intake?.companyName || '(unknown business)',
+      }));
+      return sendJson(res, 200, recent);
+    }
+
+    // Approves a held draft and sends it right away -- same deliberate
+    // separation as the follow-up approve/send split above, except here
+    // it's one click instead of two since there's nothing else to edit
+    // first (there's no wording-edit box for these, unlike follow-ups).
+    const marketingApproveMatch = pathname.match(/^\/api\/clients\/marketing\/([^/]+)\/approve$/);
+    if (marketingApproveMatch && req.method === 'POST') {
+      const record = db.getMarketingEmailById(marketingApproveMatch[1]);
+      if (!record) return sendJson(res, 404, { error: 'not found' });
+      if (record.status !== 'pending_approval') {
+        return sendJson(res, 400, { error: 'This draft is not waiting for approval.' });
+      }
+      const clientRecord = db.getClient(record.clientId);
+      if (!clientRecord) return sendJson(res, 404, { error: 'client not found' });
+
+      const result = await sendMarketingEmail(clientRecord, record);
+      const updated = db.updateMarketingEmail(record.id, result.sent
+        ? { status: 'sent', approvedAt: new Date().toISOString(), sentAt: new Date().toISOString() }
+        : { status: 'send_failed', approvedAt: new Date().toISOString(), error: result.error || null });
+      return sendJson(res, 200, updated);
+    }
+
+    // Says no -- the draft is marked rejected and nothing is ever sent.
+    // Kept as its own record (not deleted) so it still shows in the recent
+    // activity log and so hasRecentMarketingEmail still counts it, which
+    // stops the agent re-drafting the exact same nudge again tomorrow.
+    const marketingRejectMatch = pathname.match(/^\/api\/clients\/marketing\/([^/]+)\/reject$/);
+    if (marketingRejectMatch && req.method === 'POST') {
+      const record = db.getMarketingEmailById(marketingRejectMatch[1]);
+      if (!record) return sendJson(res, 404, { error: 'not found' });
+      if (record.status !== 'pending_approval') {
+        return sendJson(res, 400, { error: 'This draft is not waiting for approval.' });
+      }
+      const updated = db.updateMarketingEmail(record.id, {
+        status: 'rejected',
+        rejectedAt: new Date().toISOString(),
+      });
+      return sendJson(res, 200, updated);
+    }
+
     const clientGetMatch = pathname.match(/^\/api\/clients\/([^/]+)$/);
     if (clientGetMatch && req.method === 'GET') {
       const clientRecord = db.getClient(clientGetMatch[1]);
@@ -2792,6 +2879,36 @@ const server = http.createServer(async (req, res) => {
       });
       if (!updated) return sendJson(res, 404, { error: 'not found' });
       return sendJson(res, 200, { disconnected: true });
+    }
+
+    // One-click unsubscribe link in every marketing email's footer -- public
+    // on purpose, same reason the Stripe webhook and the Google OAuth
+    // callback stay public: whoever clicks this has no dashboard login, just
+    // the long unguessable token from their own email. Setting
+    // marketingOptOut here is what makes the daily agent skip this business
+    // for good, not just this one email.
+    if (pathname === '/api/marketing/unsubscribe' && req.method === 'GET') {
+      const token = url.searchParams.get('token');
+      const client = db.setMarketingOptOutByToken(token);
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      if (!client) {
+        return res.end(
+          simpleHtmlPage(
+            'Link not found',
+            "This unsubscribe link doesn't look right, or has already been used. If you're still getting emails you don't want, reply to one and let us know.",
+            '/',
+            'Back to Dispatch AI'
+          )
+        );
+      }
+      return res.end(
+        simpleHtmlPage(
+          "You're unsubscribed",
+          `${client.intake?.companyName || 'This business'} won't get any more marketing emails from Dispatch AI.`,
+          '/',
+          'Back to Dispatch AI'
+        )
+      );
     }
 
     // Retell calls this after every real phone call ends, so its actual
@@ -3104,6 +3221,9 @@ server.listen(PORT, () => {
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
     console.log('NOTE: GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set -- the dashboard\'s "Connect Google Calendar" button will show a setup message instead of connecting a real calendar. See LAUNCH_CHECKLIST.md.');
   }
+  if (!process.env.AGENT_RUN_SECRET) {
+    console.log('WARNING: AGENT_RUN_SECRET is not set -- the daily email-marketing agent trigger (/api/internal/agents/email-marketing/run) will reject every request until this is set in Render.');
+  }
 });
 const { placeEmergencyAlertCall } = require('./lib/retellClient');
 const serviceM8 = require('./lib/serviceM8Client');
@@ -3125,4 +3245,176 @@ async function pushJobToServiceM8IfConnected(clientRecord, jobFields) {
   } catch (err) {
     console.error(`ServiceM8 push failed for client ${clientRecord.id}:`, err.message || err);
   }
+}
+
+// --- Autonomous email-marketing agent ---------------------------------------
+// Runs once a day (triggered by /api/internal/agents/email-marketing/run,
+// see above) against your own client list -- the businesses who signed up
+// for Dispatch AI, not their customers. Two situations are handled:
+//
+//   stalled_draft_reminder -- a signup that started but never finished
+//   (status still 'draft' a few days later). Low-risk, so these go out
+//   automatically.
+//
+//   win_back_cancelled -- a former paying client who cancelled a while
+//   ago. Higher stakes (easy to come across as pushy to someone who left
+//   on purpose), so these are drafted and held here for you to approve
+//   from the dashboard instead of sending themselves.
+//
+// cooldownDays stops either kind being re-drafted for the same business
+// every single day the agent runs -- hasRecentMarketingEmail (lib/db.js)
+// counts a record from the moment it's created, whatever its final status
+// (sent, rejected, or failed), so a rejected win-back email isn't retried
+// the very next day either.
+const { buildEmailMarketingPrompt, parseEmailMarketingDraft } = require('./lib/emailMarketingPrompt');
+
+const MARKETING_KIND_RULES = {
+  stalled_draft_reminder: { autoSend: true, minDaysSince: 3, cooldownDays: 14 },
+  win_back_cancelled: { autoSend: false, minDaysSince: 30, cooldownDays: 30 },
+};
+
+// Fails CLOSED on purpose: with AGENT_RUN_SECRET unset, every request is
+// rejected rather than let through on a missing/guessable secret -- a
+// deliberately different default to checkDashboardAuth's insecure-but-
+// functional fallback above, since there's no good reason to ever let this
+// particular route run without a real secret configured.
+function checkAgentRunSecret(req) {
+  const expected = process.env.AGENT_RUN_SECRET;
+  if (!expected) return false;
+  const provided = req.headers['x-agent-secret'];
+  if (!provided) return false;
+  const providedBuf = Buffer.from(String(provided));
+  const expectedBuf = Buffer.from(expected);
+  return providedBuf.length === expectedBuf.length && crypto.timingSafeEqual(providedBuf, expectedBuf);
+}
+
+// Heads-up email for a draft that needs a human look before it sends --
+// same reasoning and same silent-no-op-if-unset behaviour as notifyFounder
+// above, just worded for this situation instead of a new signup review.
+async function notifyFounderOfPendingMarketingEmail({ companyName, kind }) {
+  const founderEmail = process.env.FOLLOWUP_REPLY_TO;
+  if (!founderEmail) return;
+  const kindLabel = kind === 'win_back_cancelled' ? 'a win-back email to a cancelled client' : 'a marketing email';
+  try {
+    await sendEmail({
+      to: founderEmail,
+      subject: 'Dispatch AI -- a marketing email needs your approval',
+      text: `The daily email-marketing agent drafted ${kindLabel} for "${companyName}" and is holding it for your approval before sending.\n\nReview it in your dashboard: /dashboard`,
+      fromName: 'Dispatch AI',
+    });
+  } catch (err) {
+    // Never let a notification failure affect the drafted record itself.
+  }
+}
+
+// Actually sends one marketing email, always appending a real, working
+// unsubscribe link -- generated here in code from a token lazily assigned
+// to the client record, never written by the AI itself, so it can never be
+// garbled, reworded, or left out by a model that didn't follow the exact
+// format asked for. Used both by the agent's own auto-send path and by the
+// founder's "Approve" button on a held draft.
+async function sendMarketingEmail(clientRecord, record) {
+  const contactEmail = clientRecord.intake?.contactEmail;
+  if (!contactEmail) {
+    return { success: false, demoMode: false, error: 'No contact email on file for this business.' };
+  }
+  try {
+    const unsubClient = db.assignMarketingUnsubscribeToken(clientRecord.id);
+    const unsubscribeUrl = `${PUBLIC_BASE_URL}/api/marketing/unsubscribe?token=${unsubClient.marketingUnsubscribeToken}`;
+    const fullText = `${record.body}\n\n---\nDon't want these emails? Unsubscribe: ${unsubscribeUrl}`;
+    const result = await sendEmail({
+      to: contactEmail,
+      subject: record.subject || 'A message from Dispatch AI',
+      text: fullText,
+      fromName: 'Dispatch AI',
+    });
+    return { success: true, demoMode: !!result.demoMode, error: null };
+  } catch (err) {
+    return { success: false, demoMode: false, error: err.message || 'Send failed' };
+  }
+}
+
+async function runEmailMarketingAgent() {
+  const summary = { scanned: 0, drafted: 0, autoSent: 0, heldForApproval: 0, skipped: 0, failed: 0 };
+  const clients = db.listClients();
+
+  for (const clientRecord of clients) {
+    summary.scanned += 1;
+    if (clientRecord.marketingOptOut) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    let kind = null;
+    if (clientRecord.status === 'draft' && clientRecord.createdAt) {
+      const daysSince = (Date.now() - new Date(clientRecord.createdAt).getTime()) / (24 * 60 * 60 * 1000);
+      if (daysSince >= MARKETING_KIND_RULES.stalled_draft_reminder.minDaysSince) kind = 'stalled_draft_reminder';
+    } else if (clientRecord.status === 'cancelled' && clientRecord.cancelledAt) {
+      const daysSince = (Date.now() - new Date(clientRecord.cancelledAt).getTime()) / (24 * 60 * 60 * 1000);
+      if (daysSince >= MARKETING_KIND_RULES.win_back_cancelled.minDaysSince) kind = 'win_back_cancelled';
+    }
+    if (!kind) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    if (!clientRecord.intake?.contactEmail) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    const rules = MARKETING_KIND_RULES[kind];
+    if (db.hasRecentMarketingEmail(clientRecord.id, kind, rules.cooldownDays)) {
+      summary.skipped += 1;
+      continue;
+    }
+
+    const { system, messages } = buildEmailMarketingPrompt(clientRecord, kind);
+    const result = await callClaude({ system, messages, maxTokens: 300 });
+    const draft = result.demoMode
+      ? {
+          subject: '(placeholder subject -- add a real ANTHROPIC_API_KEY)',
+          body: '(AI marketing drafting needs a real ANTHROPIC_API_KEY -- this is a placeholder.)',
+        }
+      : parseEmailMarketingDraft(result.text);
+
+    if (!draft.body) {
+      summary.skipped += 1;
+      continue;
+    }
+    summary.drafted += 1;
+
+    if (rules.autoSend) {
+      const record = db.addMarketingEmailDraft({
+        clientId: clientRecord.id,
+        kind,
+        subject: draft.subject,
+        body: draft.body,
+        status: 'pending_approval',
+      });
+      const sendResult = await sendMarketingEmail(clientRecord, record);
+      db.updateMarketingEmail(record.id, {
+        status: sendResult.success ? 'auto_sent' : 'send_failed',
+        sentAt: sendResult.success && !sendResult.demoMode ? new Date().toISOString() : null,
+        error: sendResult.error || null,
+      });
+      if (sendResult.success) summary.autoSent += 1;
+      else summary.failed += 1;
+    } else {
+      db.addMarketingEmailDraft({
+        clientId: clientRecord.id,
+        kind,
+        subject: draft.subject,
+        body: draft.body,
+        status: 'pending_approval',
+      });
+      await notifyFounderOfPendingMarketingEmail({
+        companyName: clientRecord.intake?.companyName || 'a business',
+        kind,
+      });
+      summary.heldForApproval += 1;
+    }
+  }
+
+  return summary;
 }
