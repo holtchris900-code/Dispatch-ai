@@ -1,0 +1,182 @@
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your appointment — Dispatch AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="logo">Dispatch<span>AI</span></span>
+  </header>
+
+  <section style="padding: 40px 0; max-width: 560px;">
+    <div id="loadingState">
+      <p style="color:var(--ink-soft);">Loading...</p>
+    </div>
+
+    <div id="invalidState" style="display:none;">
+      <h1 style="font-size:24px;">Link not found</h1>
+      <p style="color:var(--ink-soft);">This link doesn't look right, or the appointment it points to no longer exists. If you think that's wrong, contact the business directly.</p>
+    </div>
+
+    <div id="cancelledState" style="display:none;">
+      <h1 style="font-size:24px;">Appointment cancelled</h1>
+      <p style="color:var(--ink-soft);" id="cancelledCompanyLine"></p>
+    </div>
+
+    <div id="mainState" style="display:none;">
+      <h1 style="font-size:24px; margin:0;" id="companyTitle">Your appointment</h1>
+      <div class="section-block" style="margin-top:20px; padding-top:0; border-top:none;">
+        <div style="font-size:18px; font-weight:700; font-family:'Plus Jakarta Sans', sans-serif;" id="apptWhen"></div>
+        <div style="font-size:13.5px; color:var(--ink-soft); margin-top:4px;" id="apptDescription"></div>
+      </div>
+
+      <div class="section-block">
+        <h2>Need to cancel?</h2>
+        <button class="btn btn-secondary" id="cancelBtn">Cancel this appointment</button>
+        <div id="cancelResult" style="margin-top:10px; font-size:13px; display:none;"></div>
+      </div>
+
+      <div class="section-block">
+        <h2>Need a different time?</h2>
+        <p class="section-hint">Pick a new date and time -- we'll check it's actually free before changing anything.</p>
+        <input type="date" id="newDateInput" style="padding:8px; border-radius:6px; border:1px solid var(--line); font-size:13px; margin-right:8px;" />
+        <input type="time" id="newTimeInput" style="padding:8px; border-radius:6px; border:1px solid var(--line); font-size:13px; margin-right:8px;" />
+        <button class="btn btn-primary" id="rescheduleBtn" style="margin-top:8px;">Change to this time</button>
+        <div id="rescheduleResult" style="margin-top:10px; font-size:13px; display:none;"></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>Dispatch AI — MVP prototype.</footer>
+</div>
+
+<style>
+  .section-block { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .section-block h2 { font-size: 17px; margin: 0 0 6px; }
+  .section-hint { font-size: 13px; color: var(--ink-soft); margin: 0 0 10px; }
+</style>
+
+<script>
+const token = new URLSearchParams(window.location.search).get('token');
+const loadingState = document.getElementById('loadingState');
+const invalidState = document.getElementById('invalidState');
+const cancelledState = document.getElementById('cancelledState');
+const mainState = document.getElementById('mainState');
+
+function escapeAttr(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+let currentAppt = null;
+
+function showState(name) {
+  loadingState.style.display = name === 'loading' ? 'block' : 'none';
+  invalidState.style.display = name === 'invalid' ? 'block' : 'none';
+  cancelledState.style.display = name === 'cancelled' ? 'block' : 'none';
+  mainState.style.display = name === 'main' ? 'block' : 'none';
+}
+
+async function load() {
+  if (!token) {
+    showState('invalid');
+    return;
+  }
+  try {
+    const res = await fetch('/api/appointment/' + token);
+    if (!res.ok) {
+      showState('invalid');
+      return;
+    }
+    const appt = await res.json();
+    currentAppt = appt;
+    if (appt.status === 'cancelled') {
+      document.getElementById('cancelledCompanyLine').textContent =
+        'Your appointment with ' + (appt.companyName || 'the business') + ' has been cancelled.';
+      showState('cancelled');
+      return;
+    }
+    render(appt);
+    showState('main');
+  } catch (err) {
+    showState('invalid');
+  }
+}
+
+function render(appt) {
+  document.getElementById('companyTitle').textContent = 'Your appointment with ' + (appt.companyName || 'the business');
+  const opts = { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' };
+  const when = new Date(appt.startAt).toLocaleString(undefined, opts);
+  document.getElementById('apptWhen').textContent = when;
+  document.getElementById('apptDescription').textContent = appt.description || '';
+}
+
+document.getElementById('cancelBtn').addEventListener('click', async () => {
+  if (!confirm('Cancel this appointment? This cannot be undone from here.')) return;
+  const btn = document.getElementById('cancelBtn');
+  const resultBox = document.getElementById('cancelResult');
+  btn.disabled = true;
+  resultBox.style.display = 'block';
+  resultBox.textContent = 'Cancelling...';
+  try {
+    const res = await fetch('/api/appointment/' + token + '/cancel', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) {
+      resultBox.innerHTML = '<span style="color:#b91c1c;">' + escapeAttr(data.error) + '</span>';
+      btn.disabled = false;
+    } else {
+      load();
+    }
+  } catch (err) {
+    resultBox.innerHTML = '<span style="color:#b91c1c;">Something went wrong. Try again in a moment.</span>';
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('rescheduleBtn').addEventListener('click', async () => {
+  const date = document.getElementById('newDateInput').value;
+  const startTime = document.getElementById('newTimeInput').value;
+  const btn = document.getElementById('rescheduleBtn');
+  const resultBox = document.getElementById('rescheduleResult');
+  resultBox.style.display = 'block';
+  if (!date || !startTime) {
+    resultBox.innerHTML = '<span style="color:#b91c1c;">Pick a date and time first.</span>';
+    return;
+  }
+  btn.disabled = true;
+  resultBox.textContent = 'Checking that time...';
+  try {
+    const res = await fetch('/api/appointment/' + token + '/reschedule', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ date, startTime }),
+    });
+    const data = await res.json();
+    if (data.conflict) {
+      resultBox.innerHTML = '<span style="color:#b91c1c;">That time is already taken -- try a different one.</span>';
+      btn.disabled = false;
+    } else if (data.error) {
+      resultBox.innerHTML = '<span style="color:#b91c1c;">' + escapeAttr(data.error) + '</span>';
+      btn.disabled = false;
+    } else {
+      resultBox.innerHTML = '<span style="color:#166534;">Done -- your appointment has been moved.</span>';
+      load();
+      btn.disabled = false;
+    }
+  } catch (err) {
+    resultBox.innerHTML = '<span style="color:#b91c1c;">Something went wrong. Try again in a moment.</span>';
+    btn.disabled = false;
+  }
+});
+
+load();
+</script>
+</body>
+</html>
