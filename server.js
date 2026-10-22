@@ -1,4 +1,3 @@
-//
 // Deliberately built with ZERO npm dependencies (only Node's built-in
 // `http`, `fs`, `path`, `crypto` modules). This means it runs anywhere with
 // Node 18+ installed with no "npm install" step required, which keeps the
@@ -32,6 +31,28 @@ const { buildReviewRequestPrompt } = require('./lib/reviewRequestPrompt');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
+// Used to build links that go OUT of the app (texted/emailed to a real
+// customer) from code paths that don't have access to the current
+// request's own host (e.g. executeBookingTool, shared by both the website
+// chat widget and the Retell phone-call webhook). Override with an env var
+// if this app is ever moved to a different domain.
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'https://dispatch-ai-pd2p.onrender.com';
+// A plain, human-readable "Tue 3 Nov, 2:00pm" style label for appointment
+// confirmation texts/emails and the client-portal appointments list --
+// built from an RFC3339 string (what googleCalendarClient.js already
+// produces) and the business's own IANA timeZone, so it always reads in
+// the business's local time, not the server's.
+function formatApptForHuman(rfc3339, timeZone) {
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: timeZone || 'Europe/London',
+      weekday: 'short', day: 'numeric', month: 'short',
+      hour: 'numeric', minute: '2-digit',
+    }).format(new Date(rfc3339));
+  } catch (err) {
+    return rfc3339;
+  }
+}
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -471,6 +492,33 @@ BOOKING_TOOLS.push({
     required: ['jobDescription'],
   },
 });
+BOOKING_TOOLS.push({
+  name: 'reschedule_appointment',
+  description:
+    "Move an existing CONFIRMED appointment to a new date and time. Ask the customer for the phone number their original appointment was booked under so the right one can be found, and ALWAYS call check_availability on the new time before offering or confirming it. If no matching appointment is found, tell the customer you can't find a booking under that number -- don't guess, and don't book a brand-new appointment instead without saying so.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      customerPhone: { type: 'string', description: 'The phone number the original appointment was booked under' },
+      newDate: { type: 'string', description: 'YYYY-MM-DD' },
+      newStartTime: { type: 'string', description: '24-hour HH:MM' },
+      durationMinutes: { type: 'integer' },
+    },
+    required: ['customerPhone', 'newDate', 'newStartTime'],
+  },
+});
+BOOKING_TOOLS.push({
+  name: 'cancel_appointment',
+  description:
+    "Cancel an existing CONFIRMED appointment. Ask the customer for the phone number their original appointment was booked under so the right one can be found, and confirm with them that they actually want to cancel before calling this -- it can't be undone from this conversation. If no matching appointment is found, tell the customer you can't find a booking under that number.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      customerPhone: { type: 'string', description: 'The phone number the original appointment was booked under' },
+    },
+    required: ['customerPhone'],
+  },
+});
 
 async function executeBookingTool(name, input, clientRecord, source = 'website chat widget') {
   const timeZone = clientRecord.intake?.timeZone || 'Europe/London';
@@ -627,7 +675,98 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
           note: 'That exact time was just taken by someone else. Offer the customer a different time and check it again before confirming.',
         };
       }
+
+      // Save a real appointment record -- this is what lets the business
+      // see their actual confirmed bookings in their own portal instead of
+      // only on Google Calendar, and what lets a cancel/reschedule (from
+      // the portal, the customer's own manage link, or the AI itself) find
+      // the right one afterwards.
+      const appointment = db.addAppointment({
+        clientId: clientRecord.id,
+        customerName: input.customerName,
+        customerPhone: input.customerPhone,
+        customerEmail: input.customerEmail,
+        startAt: result.startRfc,
+        endAt: result.endRfc,
+        timeZone,
+        description: input.issueDescription,
+        calendarEventId: result.eventId,
+        source,
+      });
+
+      // Best-effort confirmation to the CUSTOMER with their own manage link
+      // (view/cancel/reschedule without calling back) -- never blocks or
+      // fails the booking itself if sending this has a problem.
+      try {
+        const manageUrl = `${PUBLIC_BASE_URL}/manage-appointment.html?token=${appointment.manageToken}`;
+        const whenLabel = formatApptForHuman(result.startRfc, timeZone);
+        if (input.customerPhone && clientRecord.retellPhoneNumber) {
+          await sendSms({
+            to: input.customerPhone,
+            from: clientRecord.retellPhoneNumber,
+            text: `${companyName}: you're booked in for ${whenLabel}. Manage or change this booking: ${manageUrl}`,
+          });
+        } else if (input.customerEmail) {
+          await sendEmail({
+            to: input.customerEmail,
+            subject: `${companyName} -- your appointment is booked`,
+            text: `Hi ${input.customerName || ''},\n\nYou're booked in for ${whenLabel} with ${companyName}.\n\nNeed to cancel or change the time? Use this link:\n${manageUrl}\n\n-- ${companyName} (via Dispatch AI)`,
+            fromName: companyName,
+          });
+        }
+      } catch (err) {
+        console.error(`Booking confirmation send failed for client ${clientRecord.id}:`, err.message || err);
+      }
+
       return { connected: true, booked: true };
+    }
+
+    if (name === 'reschedule_appointment') {
+      const appt = db.findUpcomingAppointmentByPhone(clientRecord.id, input.customerPhone);
+      if (!appt) {
+        return {
+          connected: true,
+          found: false,
+          note: "No upcoming appointment was found under that phone number. Double-check the number with the customer, or offer to log a fresh job request with log_job_request instead.",
+        };
+      }
+
+      const result = await googleCalendar.rescheduleAppointment({
+        getAccessToken,
+        eventId: appt.calendarEventId,
+        date: input.newDate,
+        startTime: input.newStartTime,
+        durationMinutes,
+        timeZone,
+      });
+
+      if (result.conflict) {
+        return {
+          connected: true,
+          found: true,
+          rescheduled: false,
+          conflict: true,
+          note: 'That new time was just taken by someone else. Offer the customer a different time and check it again before confirming.',
+        };
+      }
+
+      db.updateAppointment(appt.id, { startAt: result.startRfc, endAt: result.endRfc });
+      return { connected: true, found: true, rescheduled: true };
+    }
+
+    if (name === 'cancel_appointment') {
+      const appt = db.findUpcomingAppointmentByPhone(clientRecord.id, input.customerPhone);
+      if (!appt) {
+        return {
+          connected: true,
+          found: false,
+          note: "No upcoming appointment was found under that phone number. Double-check the number with the customer.",
+        };
+      }
+
+      await googleCalendar.cancelAppointment({ getAccessToken, eventId: appt.calendarEventId });
+      db.updateAppointment(appt.id, { status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'ai' });
+      return { connected: true, found: true, cancelled: true };
     }
 
     return { error: true, note: 'Unknown tool.' };
@@ -1626,6 +1765,97 @@ const server = http.createServer(async (req, res) => {
       });
       const updated = db.updateJob(jobId, safeUpdates);
       return sendJson(res, 200, { job: updated });
+    }
+
+    // Real, confirmed upcoming appointments for the client portal's
+    // "Upcoming appointments" list -- separate from /jobs above, which is
+    // every request taken down whether or not it turned into a booked
+    // time. Same "paid or cancelled clients only" gate as /jobs and /data.
+    const clientPortalAppointmentsMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/appointments$/);
+    if (clientPortalAppointmentsMatch && req.method === 'GET') {
+      const clientRecord = db.getClientByPortalToken(clientPortalAppointmentsMatch[1]);
+      if (!clientRecord || (clientRecord.status !== 'paid' && clientRecord.status !== 'cancelled')) {
+        return sendJson(res, 404, { error: 'not found' });
+      }
+      return sendJson(res, 200, { appointments: db.listUpcomingAppointmentsForClient(clientRecord.id) });
+    }
+
+    // Lets a business owner cancel one of their own confirmed appointments
+    // right from the portal -- cancels the real Google Calendar event too,
+    // not just this app's own record of it. Checks the appointment id
+    // actually belongs to THIS client first, same ownership check as the
+    // job-update route above.
+    const clientPortalAppointmentCancelMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/appointments\/([^/]+)\/cancel$/);
+    if (clientPortalAppointmentCancelMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPortalToken(clientPortalAppointmentCancelMatch[1]);
+      if (!clientRecord || (clientRecord.status !== 'paid' && clientRecord.status !== 'cancelled')) {
+        return sendJson(res, 404, { error: 'not found' });
+      }
+      const appt = db.getAppointmentById(clientPortalAppointmentCancelMatch[2]);
+      if (!appt || appt.clientId !== clientRecord.id) {
+        return sendJson(res, 404, { error: 'not found' });
+      }
+      if (appt.status === 'cancelled') {
+        return sendJson(res, 200, { appointment: appt });
+      }
+      try {
+        if (appt.calendarEventId && googleCalendar.isConfigured() && clientRecord.googleRefreshToken) {
+          await googleCalendar.cancelAppointment({
+            getAccessToken: () => getGoogleAccessToken(clientRecord),
+            eventId: appt.calendarEventId,
+          });
+        }
+      } catch (err) {
+        console.error(`Appointment cancel (client-portal) failed for client ${clientRecord.id}:`, err.message || err);
+        return sendJson(res, 502, { error: "Couldn't reach the calendar just now. Try again shortly." });
+      }
+      const updated = db.updateAppointment(appt.id, {
+        status: 'cancelled',
+        cancelledAt: new Date().toISOString(),
+        cancelledBy: 'business',
+      });
+      return sendJson(res, 200, { appointment: updated });
+    }
+
+    // Lets a business owner move one of their own confirmed appointments to
+    // a new date/time right from the portal -- same best-effort conflict
+    // check and PATCH-not-recreate approach as the AI's own
+    // reschedule_appointment tool in executeBookingTool above.
+    const clientPortalAppointmentRescheduleMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/appointments\/([^/]+)\/reschedule$/);
+    if (clientPortalAppointmentRescheduleMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPortalToken(clientPortalAppointmentRescheduleMatch[1]);
+      if (!clientRecord || (clientRecord.status !== 'paid' && clientRecord.status !== 'cancelled')) {
+        return sendJson(res, 404, { error: 'not found' });
+      }
+      const appt = db.getAppointmentById(clientPortalAppointmentRescheduleMatch[2]);
+      if (!appt || appt.clientId !== clientRecord.id || appt.status === 'cancelled') {
+        return sendJson(res, 404, { error: 'not found' });
+      }
+      if (!googleCalendar.isConfigured() || !clientRecord.googleRefreshToken) {
+        return sendJson(res, 400, { error: 'Google Calendar is not connected for this account.' });
+      }
+      const { date, startTime, durationMinutes } = await readBody(req);
+      if (!date || !startTime) {
+        return sendJson(res, 400, { error: 'A new date and time are both required.' });
+      }
+      try {
+        const result = await googleCalendar.rescheduleAppointment({
+          getAccessToken: () => getGoogleAccessToken(clientRecord),
+          eventId: appt.calendarEventId,
+          date,
+          startTime,
+          durationMinutes: Number(durationMinutes) || Math.round((new Date(appt.endAt) - new Date(appt.startAt)) / 60000) || 60,
+          timeZone: appt.timeZone,
+        });
+        if (result.conflict) {
+          return sendJson(res, 200, { conflict: true });
+        }
+        const updated = db.updateAppointment(appt.id, { startAt: result.startRfc, endAt: result.endRfc });
+        return sendJson(res, 200, { appointment: updated });
+      } catch (err) {
+        console.error(`Appointment reschedule (client-portal) failed for client ${clientRecord.id}:`, err.message || err);
+        return sendJson(res, 502, { error: "Couldn't reach the calendar just now. Try again shortly." });
+      }
     }
 
     // Lets a client edit their own AI agent's script -- but unlike the
@@ -2693,6 +2923,85 @@ const server = http.createServer(async (req, res) => {
       }
 
         return sendJson(res, 200, { received: true });
+    }
+
+    // --- Customer self-service: view/cancel/reschedule a booked appointment
+    // without calling the business back ----------------------------------
+    // Reached by the long, unguessable manageToken texted/emailed to the
+    // customer the moment book_appointment confirms a real booking (see
+    // executeBookingTool above) -- same "token instead of a login" model
+    // used everywhere else in this app a non-business person needs to
+    // reach their own record (the client portal, the past-customer
+    // portal). Public on purpose: this customer has no account to log
+    // into, just the link they were sent.
+    const appointmentViewMatch = pathname.match(/^\/api\/appointment\/([^/]+)$/);
+    if (appointmentViewMatch && req.method === 'GET') {
+      const appt = db.getAppointmentByManageToken(appointmentViewMatch[1]);
+      if (!appt) return sendJson(res, 404, { error: 'not found' });
+      const clientRecord = db.getClient(appt.clientId);
+      return sendJson(res, 200, {
+        id: appt.id,
+        status: appt.status,
+        startAt: appt.startAt,
+        endAt: appt.endAt,
+        timeZone: appt.timeZone,
+        description: appt.description,
+        companyName: clientRecord?.intake?.companyName || 'the business',
+      });
+    }
+
+    const appointmentCancelMatch = pathname.match(/^\/api\/appointment\/([^/]+)\/cancel$/);
+    if (appointmentCancelMatch && req.method === 'POST') {
+      const appt = db.getAppointmentByManageToken(appointmentCancelMatch[1]);
+      if (!appt) return sendJson(res, 404, { error: 'not found' });
+      if (appt.status === 'cancelled') return sendJson(res, 200, { status: 'cancelled' });
+      const clientRecord = db.getClient(appt.clientId);
+      try {
+        if (appt.calendarEventId && clientRecord && googleCalendar.isConfigured() && clientRecord.googleRefreshToken) {
+          await googleCalendar.cancelAppointment({
+            getAccessToken: () => getGoogleAccessToken(clientRecord),
+            eventId: appt.calendarEventId,
+          });
+        }
+      } catch (err) {
+        console.error(`Appointment cancel (customer link) failed for appointment ${appt.id}:`, err.message || err);
+        return sendJson(res, 502, { error: "Couldn't reach the calendar just now. Try again shortly." });
+      }
+      db.updateAppointment(appt.id, { status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'customer' });
+      return sendJson(res, 200, { status: 'cancelled' });
+    }
+
+    const appointmentRescheduleMatch = pathname.match(/^\/api\/appointment\/([^/]+)\/reschedule$/);
+    if (appointmentRescheduleMatch && req.method === 'POST') {
+      const appt = db.getAppointmentByManageToken(appointmentRescheduleMatch[1]);
+      if (!appt || appt.status === 'cancelled') return sendJson(res, 404, { error: 'not found' });
+      const clientRecord = db.getClient(appt.clientId);
+      if (!clientRecord || !googleCalendar.isConfigured() || !clientRecord.googleRefreshToken) {
+        return sendJson(res, 400, { error: 'This business’s calendar is not connected right now.' });
+      }
+      const { date, startTime } = await readBody(req);
+      if (!date || !startTime) {
+        return sendJson(res, 400, { error: 'A new date and time are both required.' });
+      }
+      try {
+        const durationMinutes = Math.round((new Date(appt.endAt) - new Date(appt.startAt)) / 60000) || 60;
+        const result = await googleCalendar.rescheduleAppointment({
+          getAccessToken: () => getGoogleAccessToken(clientRecord),
+          eventId: appt.calendarEventId,
+          date,
+          startTime,
+          durationMinutes,
+          timeZone: appt.timeZone,
+        });
+        if (result.conflict) {
+          return sendJson(res, 200, { conflict: true });
+        }
+        const updated = db.updateAppointment(appt.id, { startAt: result.startRfc, endAt: result.endRfc });
+        return sendJson(res, 200, { status: updated.status, startAt: updated.startAt, endAt: updated.endAt });
+      } catch (err) {
+        console.error(`Appointment reschedule (customer link) failed for appointment ${appt.id}:`, err.message || err);
+        return sendJson(res, 502, { error: "Couldn't reach the calendar just now. Try again shortly." });
+      }
     }
 
     // Retell calls this DURING a live phone call whenever the phone agent
