@@ -1,4 +1,3 @@
-<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -51,6 +50,11 @@
           <h2>How your AI is doing</h2>
           <p class="section-hint">Call &amp; chat volume over the last 14 days, how many turn into a booking, and how often a call needed the missed-call text-back.</p>
           <div id="analyticsBox"></div>
+        </div>
+        <div class="section-block" id="appointmentsSection">
+          <h2>Upcoming appointments</h2>
+          <p class="section-hint">Every real, confirmed booking on your calendar -- grouped by day. Cancelling or changing the time here updates your real Google Calendar too, not just this list.</p>
+          <div id="appointmentsBox"></div>
         </div>
         <div class="section-block" id="customerJobsSection">
           <h2>Customer jobs</h2>
@@ -196,6 +200,7 @@ async function load() {
     const data = await res.json();
     data.calls = await api('/calls').then((r) => r.calls || []).catch(() => []);
     data.jobs = await api('/jobs').then((r) => r.jobs || []).catch(() => []);
+    data.appointments = await api('/appointments').then((r) => r.appointments || []).catch(() => []);
     currentData = data;
     render(data);
     loadingState.style.display = 'none';
@@ -243,6 +248,7 @@ function render(data) {
   renderUsage(data);
   renderAnalytics(data);
   renderCustomerJobs(data);
+  renderAppointments(data);
 }
 
 function renderHostedPage(data) {
@@ -732,6 +738,116 @@ function renderCustomerJobs(data) {
         setTimeout(() => { resultEl.textContent = ''; }, 2000);
       } catch (err) {
         resultEl.textContent = "Couldn't save, try again";
+      }
+    });
+  });
+}
+
+function apptDayKey(iso) {
+  return new Date(iso).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function apptTimeRange(startAt, endAt) {
+  const opts = { hour: 'numeric', minute: '2-digit' };
+  return new Date(startAt).toLocaleTimeString(undefined, opts) + ' - ' + new Date(endAt).toLocaleTimeString(undefined, opts);
+}
+
+function renderAppointments(data) {
+  const box = document.getElementById('appointmentsBox');
+  const appointments = data.appointments || [];
+  if (appointments.length === 0) {
+    box.innerHTML = '<p class="section-hint">No upcoming appointments yet -- this fills in automatically once your AI books a real time on your calendar.</p>';
+    return;
+  }
+
+  const groups = [];
+  let lastKey = null;
+  appointments.forEach((appt) => {
+    const key = apptDayKey(appt.startAt);
+    if (key !== lastKey) {
+      groups.push({ key, items: [] });
+      lastKey = key;
+    }
+    groups[groups.length - 1].items.push(appt);
+  });
+
+  box.innerHTML = groups.map((group) => {
+    const rowsHtml = group.items.map((appt) => {
+      const contactBits = [appt.customerName, appt.customerPhone, appt.customerEmail].filter(Boolean).map(escapeAttr).join(' &middot; ');
+      return '<div class="appt-row" data-id="' + appt.id + '" style="border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:8px;">' +
+        '<div style="font-size:13.5px; font-weight:600;">' + apptTimeRange(appt.startAt, appt.endAt) + '</div>' +
+        (contactBits ? '<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">' + contactBits + '</div>' : '') +
+        (appt.description ? '<div style="font-size:12.5px; margin-top:4px;">' + escapeAttr(appt.description) + '</div>' : '') +
+        '<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">' +
+        '<button class="btn btn-secondary appt-reschedule-btn" data-id="' + appt.id + '" style="font-size:12px; padding:6px 12px;">Change time</button>' +
+        '<button class="btn btn-secondary appt-cancel-btn" data-id="' + appt.id + '" style="font-size:12px; padding:6px 12px;">Cancel</button>' +
+        '</div>' +
+        '<div class="appt-reschedule-form" data-id="' + appt.id + '" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--line);">' +
+        '<input type="date" class="appt-new-date" data-id="' + appt.id + '" style="padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-right:6px;" />' +
+        '<input type="time" class="appt-new-time" data-id="' + appt.id + '" style="padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-right:6px;" />' +
+        '<button class="btn btn-primary appt-confirm-reschedule-btn" data-id="' + appt.id + '" style="font-size:12px; padding:6px 12px;">Confirm new time</button>' +
+        '</div>' +
+        '<div class="appt-result" data-id="' + appt.id + '" style="margin-top:6px; font-size:12px;"></div>' +
+        '</div>';
+    }).join('');
+    return '<div style="margin-bottom:14px;">' +
+      '<div style="font-size:12.5px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;">' + group.key + '</div>' +
+      rowsHtml + '</div>';
+  }).join('');
+
+  box.querySelectorAll('.appt-cancel-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Cancel this appointment? This also removes it from your real calendar.')) return;
+      const id = btn.dataset.id;
+      const resultEl = box.querySelector('.appt-result[data-id="' + id + '"]');
+      btn.disabled = true;
+      resultEl.textContent = 'Cancelling...';
+      try {
+        await api('/appointments/' + id + '/cancel', { method: 'POST' });
+        load();
+      } catch (err) {
+        resultEl.innerHTML = '<span style="color:#b91c1c;">Something went wrong -- try again.</span>';
+        btn.disabled = false;
+      }
+    });
+  });
+
+  box.querySelectorAll('.appt-reschedule-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const form = box.querySelector('.appt-reschedule-form[data-id="' + id + '"]');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    });
+  });
+
+  box.querySelectorAll('.appt-confirm-reschedule-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const date = box.querySelector('.appt-new-date[data-id="' + id + '"]').value;
+      const startTime = box.querySelector('.appt-new-time[data-id="' + id + '"]').value;
+      const resultEl = box.querySelector('.appt-result[data-id="' + id + '"]');
+      if (!date || !startTime) {
+        resultEl.innerHTML = '<span style="color:#b91c1c;">Pick a date and time first.</span>';
+        return;
+      }
+      btn.disabled = true;
+      resultEl.textContent = 'Checking the new time...';
+      try {
+        const result = await api('/appointments/' + id + '/reschedule', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ date, startTime }),
+        });
+        if (result.conflict) {
+          resultEl.innerHTML = '<span style="color:#b91c1c;">That time is already taken -- try a different one.</span>';
+          btn.disabled = false;
+        } else if (result.error) {
+          resultEl.innerHTML = '<span style="color:#b91c1c;">' + escapeAttr(result.error) + '</span>';
+          btn.disabled = false;
+        } else {
+          load();
+        }
+      } catch (err) {
+        resultEl.innerHTML = '<span style="color:#b91c1c;">Something went wrong -- try again.</span>';
+        btn.disabled = false;
       }
     });
   });
