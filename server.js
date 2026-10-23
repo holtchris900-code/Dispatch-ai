@@ -54,6 +54,44 @@ function formatApptForHuman(rfc3339, timeZone) {
   }
 }
 
+// Emails the business owner whenever one of THEIR customers' appointments
+// changes without the owner doing it themselves -- the AI moving or
+// cancelling one mid-call/mid-chat, or the customer doing it from their own
+// manage-appointment link. Deliberately NOT called from the client-portal
+// routes where the business owner cancels/reschedules something themselves
+// (see server.js's clientPortalAppointmentCancelMatch /
+// clientPortalAppointmentRescheduleMatch below) -- they already know, since
+// they just did it. Best-effort and silent on failure, same pattern as
+// notifyFounder and the customer's own booking-confirmation send above:
+// never lets a notification problem affect the actual booking change.
+async function notifyBusinessOwnerOfAppointmentChange(clientRecord, appt, kind) {
+  const ownerEmail = clientRecord?.intake?.contactEmail;
+  if (!ownerEmail) return;
+  try {
+    const companyName = clientRecord.intake?.companyName || 'your business';
+    const who = appt.customerName || 'A customer';
+    const contactBits = [appt.customerPhone, appt.customerEmail].filter(Boolean).join(' / ');
+    const whoLine = contactBits ? `${who} (${contactBits})` : who;
+    const whenLabel = formatApptForHuman(appt.startAt, appt.timeZone);
+    const portalLink = clientRecord.clientPortalToken
+      ? `${PUBLIC_BASE_URL}/client-portal.html?token=${clientRecord.clientPortalToken}`
+      : `${PUBLIC_BASE_URL}/client-login`;
+
+    const subject =
+      kind === 'cancelled'
+        ? `${companyName}: an appointment was cancelled`
+        : `${companyName}: an appointment was moved`;
+    const text =
+      kind === 'cancelled'
+        ? `${whoLine} cancelled their appointment that was booked for ${whenLabel}.\n\nView your schedule: ${portalLink}`
+        : `${whoLine} moved their appointment to ${whenLabel}.\n\nView your schedule: ${portalLink}`;
+
+    await sendEmail({ to: ownerEmail, subject, text, fromName: 'Dispatch AI' });
+  } catch (err) {
+    console.error(`Business-owner appointment-change notification failed for client ${clientRecord.id}:`, err.message || err);
+  }
+}
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -750,7 +788,8 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
         };
       }
 
-      db.updateAppointment(appt.id, { startAt: result.startRfc, endAt: result.endRfc });
+      const updatedAppt = db.updateAppointment(appt.id, { startAt: result.startRfc, endAt: result.endRfc });
+      await notifyBusinessOwnerOfAppointmentChange(clientRecord, updatedAppt, 'rescheduled');
       return { connected: true, found: true, rescheduled: true };
     }
 
@@ -765,7 +804,8 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
       }
 
       await googleCalendar.cancelAppointment({ getAccessToken, eventId: appt.calendarEventId });
-      db.updateAppointment(appt.id, { status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'ai' });
+      const cancelledAppt = db.updateAppointment(appt.id, { status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'ai' });
+      await notifyBusinessOwnerOfAppointmentChange(clientRecord, cancelledAppt, 'cancelled');
       return { connected: true, found: true, cancelled: true };
     }
 
@@ -3084,7 +3124,8 @@ const server = http.createServer(async (req, res) => {
         console.error(`Appointment cancel (customer link) failed for appointment ${appt.id}:`, err.message || err);
         return sendJson(res, 502, { error: "Couldn't reach the calendar just now. Try again shortly." });
       }
-      db.updateAppointment(appt.id, { status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'customer' });
+      const cancelledAppt = db.updateAppointment(appt.id, { status: 'cancelled', cancelledAt: new Date().toISOString(), cancelledBy: 'customer' });
+      if (clientRecord) await notifyBusinessOwnerOfAppointmentChange(clientRecord, cancelledAppt, 'cancelled');
       return sendJson(res, 200, { status: 'cancelled' });
     }
 
@@ -3114,6 +3155,7 @@ const server = http.createServer(async (req, res) => {
           return sendJson(res, 200, { conflict: true });
         }
         const updated = db.updateAppointment(appt.id, { startAt: result.startRfc, endAt: result.endRfc });
+        await notifyBusinessOwnerOfAppointmentChange(clientRecord, updated, 'rescheduled');
         return sendJson(res, 200, { status: updated.status, startAt: updated.startAt, endAt: updated.endAt });
       } catch (err) {
         console.error(`Appointment reschedule (customer link) failed for appointment ${appt.id}:`, err.message || err);
