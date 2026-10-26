@@ -134,6 +134,16 @@ const MIME_TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  // Added for the favicon and social-sharing preview image -- without the
+  // right content-type here, browsers won't render an .svg favicon inline
+  // and social platforms (Facebook/LinkedIn/WhatsApp/Twitter) can refuse an
+  // og:image that isn't served as a real image type.
+  '.svg': 'image/svg+xml; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
 };
 
 // Sends the founder a heads-up email whenever a new signup needs their
