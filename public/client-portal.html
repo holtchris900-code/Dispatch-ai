@@ -153,6 +153,20 @@
   .status-generating { background: #e0e7ff; color: #3730a3; }
   .status-paid { background: #dbeafe; color: #1e40af; }
   .status-cancelled { background: #fee2e2; color: #991b1b; }
+
+  /* Spreadsheet-style tables for Upcoming appointments & Customer jobs --
+     a real grid of rows/columns rather than stacked cards, wrapped in a
+     horizontally-scrolling strip so a phone screen scrolls sideways
+     within the table instead of the whole page breaking layout. */
+  .data-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; -webkit-overflow-scrolling: touch; }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .data-table th, .data-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; white-space: nowrap; }
+  .data-table td.wrap-cell { white-space: normal; min-width: 150px; }
+  .data-table thead th { background: #f8fafc; font-weight: 600; color: var(--ink-soft); white-space: nowrap; }
+  .data-table tbody tr:last-child td { border-bottom: none; }
+  .data-table tr.group-row td { background: #f1f5f9; font-weight: 600; color: var(--ink-soft); font-size: 12px; padding: 6px 10px; }
+  .data-table input.job-field, .data-table select.job-field, .data-table textarea.job-field { width: 100%; min-width: 110px; padding: 5px 6px; border-radius: 6px; border: 1px solid var(--line); font-size: 12px; box-sizing: border-box; font-family: inherit; }
+  .data-table textarea.job-field { min-height: 42px; resize: vertical; }
 </style>
 
 <script>
@@ -702,25 +716,31 @@ function renderCustomerJobs(data) {
 
   const statusOptions = ['new', 'contacted', 'booked', 'done', 'declined'];
 
+  const jobRowsHtml = jobs.map((job) => {
+    const optionsHtml = statusOptions.map((s) =>
+      '<option value="' + s + '"' + (job.status === s ? ' selected' : '') + '>' + s + '</option>'
+    ).join('');
+    return '<tr class="job-row" data-id="' + job.id + '">' +
+      '<td class="wrap-cell" style="color:var(--ink-soft); font-size:11.5px;">' + new Date(job.createdAt).toLocaleString() + '</td>' +
+      '<td>' + escapeAttr(job.source || '') + '</td>' +
+      '<td><input class="job-field" data-field="customerName" placeholder="Name" value="' + escapeAttr(job.customerName || '') + '" /></td>' +
+      '<td><input class="job-field" data-field="customerPhone" placeholder="Phone" value="' + escapeAttr(job.customerPhone || '') + '" /></td>' +
+      '<td><input class="job-field" data-field="customerEmail" placeholder="Email" value="' + escapeAttr(job.customerEmail || '') + '" /></td>' +
+      '<td class="wrap-cell"><textarea class="job-field" data-field="jobDescription" placeholder="Job wanted">' + escapeAttr(job.jobDescription || '') + '</textarea></td>' +
+      '<td><input class="job-field" data-field="preferredTime" placeholder="Preferred time" value="' + escapeAttr(job.preferredTime || '') + '" /></td>' +
+      '<td><select class="job-field" data-field="status">' + optionsHtml + '</select></td>' +
+      '<td class="wrap-cell"><textarea class="job-field" data-field="notes" placeholder="Your own notes">' + escapeAttr(job.notes || '') + '</textarea></td>' +
+      '<td>' +
+      '<button class="btn btn-secondary save-job-btn" data-id="' + job.id + '" style="font-size:11.5px; padding:5px 10px;">Save</button>' +
+      '<div class="job-save-result" data-id="' + job.id + '" style="font-size:11px; color:var(--ink-soft); margin-top:4px;"></div>' +
+      '</td>' +
+      '</tr>';
+  }).join('');
+
   box.innerHTML = '<button class="btn btn-secondary" id="downloadJobsCsvBtn" style="margin-bottom:12px;">Download as spreadsheet (.csv)</button>' +
-    jobs.map((job) => {
-      const optionsHtml = statusOptions.map((s) =>
-        '<option value="' + s + '"' + (job.status === s ? ' selected' : '') + '>' + s + '</option>'
-      ).join('');
-      return '<div class="job-row" data-id="' + job.id + '" style="border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:8px;">' +
-        '<div style="font-size:12px; color:var(--ink-soft); margin-bottom:6px;">' + new Date(job.createdAt).toLocaleString() + ' &middot; ' + escapeAttr(job.source || '') + '</div>' +
-        '<input class="job-field" data-field="customerName" placeholder="Name" value="' + escapeAttr(job.customerName || '') + '" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:5px;" />' +
-        '<input class="job-field" data-field="customerPhone" placeholder="Phone" value="' + escapeAttr(job.customerPhone || '') + '" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:5px;" />' +
-        '<input class="job-field" data-field="customerEmail" placeholder="Email" value="' + escapeAttr(job.customerEmail || '') + '" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:5px;" />' +
-        '<textarea class="job-field" data-field="jobDescription" placeholder="Job wanted" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:5px; min-height:50px;">' + escapeAttr(job.jobDescription || '') + '</textarea>' +
-        '<input class="job-field" data-field="preferredTime" placeholder="Preferred time" value="' + escapeAttr(job.preferredTime || '') + '" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:5px;" />' +
-        '<select class="job-field" data-field="status" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:5px;">' + optionsHtml + '</select>' +
-        '<textarea class="job-field" data-field="notes" placeholder="Your own notes" style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; min-height:36px;">' + escapeAttr(job.notes || '') + '</textarea>' +
-        '<div style="margin-top:6px; display:flex; align-items:center; gap:8px;">' +
-        '<button class="btn btn-secondary save-job-btn" data-id="' + job.id + '">Save</button>' +
-        '<span class="job-save-result" data-id="' + job.id + '" style="font-size:12px; color:var(--ink-soft);"></span>' +
-        '</div></div>';
-    }).join('');
+    '<div class="data-table-wrap"><table class="data-table"><thead><tr>' +
+    '<th>Date</th><th>Source</th><th>Name</th><th>Phone</th><th>Email</th><th>Job wanted</th><th>Preferred time</th><th>Status</th><th>Notes</th><th>Actions</th>' +
+    '</tr></thead><tbody>' + jobRowsHtml + '</tbody></table></div>';
 
   document.getElementById('downloadJobsCsvBtn').addEventListener('click', () => downloadJobsCsv(jobs));
 
@@ -771,29 +791,34 @@ function renderAppointments(data) {
     groups[groups.length - 1].items.push(appt);
   });
 
-  box.innerHTML = groups.map((group) => {
+  const bodyRowsHtml = groups.map((group) => {
+    const groupHeaderRow = '<tr class="group-row"><td colspan="4">' + group.key + '</td></tr>';
     const rowsHtml = group.items.map((appt) => {
-      const contactBits = [appt.customerName, appt.customerPhone, appt.customerEmail].filter(Boolean).map(escapeAttr).join(' &middot; ');
-      return '<div class="appt-row" data-id="' + appt.id + '" style="border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:8px;">' +
-        '<div style="font-size:13.5px; font-weight:600;">' + apptTimeRange(appt.startAt, appt.endAt) + '</div>' +
-        (contactBits ? '<div style="font-size:12.5px; color:var(--ink-soft); margin-top:2px;">' + contactBits + '</div>' : '') +
-        (appt.description ? '<div style="font-size:12.5px; margin-top:4px;">' + escapeAttr(appt.description) + '</div>' : '') +
-        '<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">' +
-        '<button class="btn btn-secondary appt-reschedule-btn" data-id="' + appt.id + '" style="font-size:12px; padding:6px 12px;">Change time</button>' +
-        '<button class="btn btn-secondary appt-cancel-btn" data-id="' + appt.id + '" style="font-size:12px; padding:6px 12px;">Cancel</button>' +
+      const contactBits = [appt.customerPhone, appt.customerEmail].filter(Boolean).map(escapeAttr).join(' &middot; ');
+      return '<tr class="appt-row" data-id="' + appt.id + '">' +
+        '<td>' + apptTimeRange(appt.startAt, appt.endAt) + '</td>' +
+        '<td class="wrap-cell">' + escapeAttr(appt.customerName || '—') + (contactBits ? '<div style="font-size:11.5px; color:var(--ink-soft); margin-top:2px;">' + contactBits + '</div>' : '') + '</td>' +
+        '<td class="wrap-cell">' + (appt.description ? escapeAttr(appt.description) : '—') + '</td>' +
+        '<td class="wrap-cell">' +
+        '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+        '<button class="btn btn-secondary appt-reschedule-btn" data-id="' + appt.id + '" style="font-size:11.5px; padding:5px 10px;">Change time</button>' +
+        '<button class="btn btn-secondary appt-cancel-btn" data-id="' + appt.id + '" style="font-size:11.5px; padding:5px 10px;">Cancel</button>' +
         '</div>' +
-        '<div class="appt-reschedule-form" data-id="' + appt.id + '" style="display:none; margin-top:10px; padding-top:10px; border-top:1px dashed var(--line);">' +
-        '<input type="date" class="appt-new-date" data-id="' + appt.id + '" style="padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-right:6px;" />' +
-        '<input type="time" class="appt-new-time" data-id="' + appt.id + '" style="padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-right:6px;" />' +
-        '<button class="btn btn-primary appt-confirm-reschedule-btn" data-id="' + appt.id + '" style="font-size:12px; padding:6px 12px;">Confirm new time</button>' +
+        '<div class="appt-reschedule-form" data-id="' + appt.id + '" style="display:none; margin-top:8px;">' +
+        '<input type="date" class="appt-new-date" data-id="' + appt.id + '" style="padding:5px 6px; border-radius:6px; border:1px solid var(--line); font-size:12px; margin-right:5px;" />' +
+        '<input type="time" class="appt-new-time" data-id="' + appt.id + '" style="padding:5px 6px; border-radius:6px; border:1px solid var(--line); font-size:12px; margin-right:5px;" />' +
+        '<button class="btn btn-primary appt-confirm-reschedule-btn" data-id="' + appt.id + '" style="font-size:11.5px; padding:5px 10px;">Confirm</button>' +
         '</div>' +
-        '<div class="appt-result" data-id="' + appt.id + '" style="margin-top:6px; font-size:12px;"></div>' +
-        '</div>';
+        '<div class="appt-result" data-id="' + appt.id + '" style="margin-top:5px; font-size:11.5px;"></div>' +
+        '</td>' +
+        '</tr>';
     }).join('');
-    return '<div style="margin-bottom:14px;">' +
-      '<div style="font-size:12.5px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;">' + group.key + '</div>' +
-      rowsHtml + '</div>';
+    return groupHeaderRow + rowsHtml;
   }).join('');
+
+  box.innerHTML = '<div class="data-table-wrap"><table class="data-table"><thead><tr>' +
+    '<th>Time</th><th>Customer</th><th>Job details</th><th>Actions</th>' +
+    '</tr></thead><tbody>' + bodyRowsHtml + '</tbody></table></div>';
 
   box.querySelectorAll('.appt-cancel-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
