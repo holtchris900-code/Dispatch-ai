@@ -19,7 +19,7 @@ const { buildFollowUpDraftPrompt, parseFollowUpDraft } = require('./lib/followUp
 const { buildScriptSafetyCheckPrompt, parseScriptSafetyCheck } = require('./lib/scriptSafetyCheckPrompt');
 const { sendEmail } = require('./lib/emailClient');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession, createInvoiceItem } = require('./lib/stripeClient');
-const { createPhoneAgent, updatePhoneAgentTools, retellWebhookToken } = require('./lib/retellClient');
+const { createPhoneAgent, updatePhoneAgentTools, retellWebhookToken, PHONE_AGENT_TOOLS_VERSION } = require('./lib/retellClient');
 const { provisionPhoneNumber } = require('./lib/phoneProvisioning');
 const { sendSms } = require('./lib/telnyxClient');
 const googleCalendar = require('./lib/googleCalendarClient');
@@ -90,6 +90,43 @@ async function notifyBusinessOwnerOfAppointmentChange(clientRecord, appt, kind) 
   } catch (err) {
     console.error(`Business-owner appointment-change notification failed for client ${clientRecord.id}:`, err.message || err);
   }
+}
+
+// Silently keeps an existing client's phone agent up to date with the
+// latest booking tools, with no one having to notice anything changed or
+// click a button again. Call this (fire-and-forget -- never awaited) from
+// a page-load route a client or the founder actually hits on their own --
+// the client portal's own data load below, and the founder dashboard's
+// single-client card load -- NOT from a loop over every client at once,
+// so this never does more than one real Retell call per visit.
+//
+// Compares the client's own stored retellToolsVersion against
+// lib/retellClient.js's PHONE_AGENT_TOOLS_VERSION (bumped there any time
+// buildAgentPromptAndTools meaningfully changes, e.g. this round's
+// reschedule_appointment / cancel_appointment addition) so it only ever
+// does real work once per client per upgrade -- not on every single page
+// load forever -- and stamps the client's record once the refresh
+// succeeds so it won't be retried again until the next real upgrade.
+// Exactly what turns "existing clients must remember to click Create
+// phone agent again" into "it just happens the next time they open their
+// portal."
+function maybeRefreshPhoneAgentToolsInBackground(clientRecord, baseUrl) {
+  if (!clientRecord || !clientRecord.retellAgentId || !clientRecord.retellLlmId) return;
+  if ((clientRecord.retellToolsVersion || 0) >= PHONE_AGENT_TOOLS_VERSION) return;
+  updatePhoneAgentTools({
+    llmId: clientRecord.retellLlmId,
+    companyName: clientRecord.intake?.companyName,
+    script: clientRecord.script,
+    toolsUrl: `${baseUrl}/api/retell/tools/${retellWebhookToken()}`,
+    timeZone: clientRecord.intake?.timeZone,
+    appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
+  })
+    .then(() => {
+      db.updateClient(clientRecord.id, { retellToolsVersion: PHONE_AGENT_TOOLS_VERSION });
+    })
+    .catch((err) => {
+      console.error(`Background phone-agent tools refresh failed for client ${clientRecord.id}:`, err.message || err);
+    });
 }
 
 const MIME_TYPES = {
@@ -1775,6 +1812,12 @@ const server = http.createServer(async (req, res) => {
       if (!clientRecord || (clientRecord.status !== 'paid' && clientRecord.status !== 'cancelled')) {
         return sendJson(res, 404, { error: 'not found' });
       }
+      // Every time a client opens their own portal is also a chance to
+      // silently bring their live phone agent's tools up to date, with no
+      // button for them to remember to click -- see
+      // maybeRefreshPhoneAgentToolsInBackground above. Not awaited, so it
+      // never slows down the page they're actually waiting on.
+      maybeRefreshPhoneAgentToolsInBackground(clientRecord, `${url.protocol}//${url.host}`);
       const conversations = await getClassifiedConversations(clientRecord);
       return sendJson(res, 200, { ...clientPortalView(clientRecord), conversations });
     }
@@ -2021,6 +2064,7 @@ const server = http.createServer(async (req, res) => {
             timeZone: clientRecord.intake?.timeZone,
             appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
           });
+          db.updateClient(clientRecord.id, { retellToolsVersion: PHONE_AGENT_TOOLS_VERSION });
         } catch (err) {
           console.error("Refreshing existing phone agent's booking tools failed:", err.message || err);
         }
@@ -2076,6 +2120,7 @@ const server = http.createServer(async (req, res) => {
           retellLlmId: result.llmId,
           retellAgentId: result.agentId,
           retellAgentCreatedAt: new Date().toISOString(),
+          retellToolsVersion: PHONE_AGENT_TOOLS_VERSION,
         });
 
         // Automatically buy this client their own real UK number and bind
@@ -2389,6 +2434,7 @@ const server = http.createServer(async (req, res) => {
             timeZone: clientRecord.intake?.timeZone,
             appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
           });
+          db.updateClient(clientRecord.id, { retellToolsVersion: PHONE_AGENT_TOOLS_VERSION });
         } catch (err) {
           console.error("Refreshing existing phone agent's booking tools failed:", err.message || err);
         }
@@ -2441,6 +2487,7 @@ const server = http.createServer(async (req, res) => {
           retellLlmId: result.llmId,
           retellAgentId: result.agentId,
           retellAgentCreatedAt: new Date().toISOString(),
+          retellToolsVersion: PHONE_AGENT_TOOLS_VERSION,
         });
 
         // Automatically buy this client their own real UK number and bind
@@ -2742,6 +2789,10 @@ const server = http.createServer(async (req, res) => {
     if (clientGetMatch && req.method === 'GET') {
       const clientRecord = db.getClient(clientGetMatch[1]);
       if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+      // Same silent background refresh as the client portal's own data
+      // route above, for when the founder opens this client's card in
+      // their own dashboard.
+      maybeRefreshPhoneAgentToolsInBackground(clientRecord, `${url.protocol}//${url.host}`);
       return sendJson(res, 200, clientRecord);
     }
 
