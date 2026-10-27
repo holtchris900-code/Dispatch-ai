@@ -77,10 +77,17 @@
           <div id="scriptResult" style="margin-top:8px; font-size:13px; display:none;"></div>
         </div>
 
-        <div class="section-block">
+               <div class="section-block">
           <h2>Billing</h2>
           <button class="btn btn-secondary" id="manageBillingBtn">Manage my subscription</button>
           <div id="billingResult" style="margin-top:10px; font-size:13px; display:none;"></div>
+
+          <div id="moneyBackBlock" style="margin-top:14px; display:none;">
+            <button class="btn btn-secondary" id="moneyBackBtn" style="border-color:#b91c1c; color:#b91c1c;">Request a refund (30-day guarantee)</button>
+            <div id="moneyBackHint" class="section-hint" style="margin-top:6px;"></div>
+            <div id="moneyBackResult" style="margin-top:10px; font-size:13px; display:none;"></div>
+          </div>
+          <div id="moneyBackUsedNote" class="section-hint" style="margin-top:10px; display:none;"></div>
         </div>
 
         <div class="section-block">
@@ -247,7 +254,28 @@ function render(data) {
   document.getElementById('pendingEditNote').style.display = data.pendingScriptEdit ? 'block' : 'none';
   document.getElementById('scriptBox').value = data.script || '';
 
-  document.getElementById('manageBillingBtn').style.display = data.hasStripeCustomer ? 'inline-flex' : 'none';
+    document.getElementById('manageBillingBtn').style.display = data.hasStripeCustomer ? 'inline-flex' : 'none';
+
+  const moneyBackBlock = document.getElementById('moneyBackBlock');
+  const moneyBackUsedNote = document.getElementById('moneyBackUsedNote');
+  const nowMs = Date.now();
+  const eligibleUntilMs = data.moneyBackEligibleUntil ? new Date(data.moneyBackEligibleUntil).getTime() : null;
+  if (data.moneyBackRefundedAt) {
+    moneyBackBlock.style.display = 'none';
+    moneyBackUsedNote.style.display = 'block';
+    moneyBackUsedNote.textContent = 'Your 30-day money-back guarantee was used on ' + new Date(data.moneyBackRefundedAt).toLocaleDateString() + '.';
+  } else if (eligibleUntilMs && nowMs < eligibleUntilMs) {
+    moneyBackBlock.style.display = 'block';
+    moneyBackUsedNote.style.display = 'none';
+    const daysLeft = Math.max(1, Math.ceil((eligibleUntilMs - nowMs) / (24 * 60 * 60 * 1000)));
+    document.getElementById('moneyBackHint').textContent =
+      'You have ' + daysLeft + ' day' + (daysLeft === 1 ? '' : 's') +
+      ' left to use your 30-day money-back guarantee on your first payment. This refunds that payment in full and cancels your subscription immediately.';
+  } else {
+    moneyBackBlock.style.display = 'none';
+    moneyBackUsedNote.style.display = 'none';
+  }
+
   document.getElementById('reviewLinkInput').value = data.reviewLink || '';
   document.getElementById('serviceM8KeyStatus').textContent = data.hasServiceM8Key ? 'Connected ✅' : 'Not connected yet';
 
@@ -631,6 +659,28 @@ document.getElementById('manageBillingBtn').addEventListener('click', async () =
     window.location.href = data.url;
   } else {
     resultBox.innerHTML = '<span style="color:#b91c1c;">Something went wrong generating the link.</span>';
+  }
+});
+
+document.getElementById('moneyBackBtn').addEventListener('click', async () => {
+  const resultBox = document.getElementById('moneyBackResult');
+  const confirmed = window.confirm('This will refund your first payment in full and cancel your subscription immediately. This cannot be undone. Continue?');
+  if (!confirmed) return;
+  const btn = document.getElementById('moneyBackBtn');
+  btn.disabled = true;
+  resultBox.style.display = 'block';
+  resultBox.textContent = 'Processing your refund...';
+  const data = await api('/refund-guarantee', { method: 'POST' });
+  btn.disabled = false;
+  if (data.demoMode) {
+    resultBox.innerHTML = '<span style="color:#9a3412;">' + data.message + '</span>';
+  } else if (data.error) {
+    resultBox.innerHTML = '<span style="color:#b91c1c;">' + data.error + '</span>';
+  } else if (data.refunded) {
+    resultBox.innerHTML = '<span style="color:#15803d;">Refund issued and subscription cancelled. A confirmation has been sent to your email.</span>';
+    load();
+  } else {
+    resultBox.innerHTML = '<span style="color:#b91c1c;">Something went wrong issuing the refund.</span>';
   }
 });
 
