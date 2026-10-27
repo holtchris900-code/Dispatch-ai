@@ -1204,7 +1204,7 @@ function sendAuthChallenge(res) {
 }
 function serveStaticFile(req, res, urlPath) {
   // Map "/" -> index.html, "/onboard" -> onboard.html, "/dashboard" -> dashboard.html
-  const routeMap = {
+    const routeMap = {
     '/': 'index.html',
     '/onboard': 'onboard.html',
     '/dashboard': 'dashboard.html',
@@ -1212,6 +1212,8 @@ function serveStaticFile(req, res, urlPath) {
     '/client-login': 'client-login.html',
     '/plumbers': 'plumbers.html',
     '/electricians': 'electricians.html',
+    '/terms': 'terms.html',
+    '/privacy': 'privacy.html',
   };
   const relativePath = routeMap[urlPath] || urlPath.replace(/^\//, '');
 
