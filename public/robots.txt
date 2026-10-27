@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /client-login
+Disallow: /client-portal/
+Disallow: /customer-portal/
+Disallow: /manage-appointment
+Disallow: /success
+Disallow: /widget-test.html
+
+Sitemap: https://dispatch-ai-pd2p.onrender.com/sitemap.xml
