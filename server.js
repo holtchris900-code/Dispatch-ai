@@ -18,7 +18,7 @@ const { buildConversationInsightPrompt, parseConversationInsight } = require('./
 const { buildFollowUpDraftPrompt, parseFollowUpDraft } = require('./lib/followUpPrompt');
 const { buildScriptSafetyCheckPrompt, parseScriptSafetyCheck } = require('./lib/scriptSafetyCheckPrompt');
 const { sendEmail } = require('./lib/emailClient');
-const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession, createInvoiceItem } = require('./lib/stripeClient');
+const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession, createInvoiceItem, createRefund, cancelSubscriptionImmediately } = require('./lib/stripeClient');
 const { createPhoneAgent, updatePhoneAgentTools, retellWebhookToken, PHONE_AGENT_TOOLS_VERSION } = require('./lib/retellClient');
 const { provisionPhoneNumber } = require('./lib/phoneProvisioning');
 const { sendSms } = require('./lib/telnyxClient');
@@ -270,7 +270,15 @@ function clientPortalView(clientRecord) {
     script: clientRecord.script || '',
     pendingScriptEdit: clientRecord.pendingScriptEdit || null,
     reviewReason: clientRecord.pendingScriptEdit ? clientRecord.reviewReason : null,
-    cancelledAt: clientRecord.cancelledAt || null,
+        cancelledAt: clientRecord.cancelledAt || null,
+    // Lets the portal page show (or hide) the self-service refund button
+    // and a "X days left" hint without it needing to know the guarantee's
+    // length itself -- this is already the actual deadline, computed once
+    // here from firstChargeAt + MONEY_BACK_GUARANTEE_DAYS.
+    moneyBackEligibleUntil: clientRecord.firstChargeAt
+      ? new Date(new Date(clientRecord.firstChargeAt).getTime() + MONEY_BACK_GUARANTEE_DAYS * 24 * 60 * 60 * 1000).toISOString()
+      : null,
+    moneyBackRefundedAt: clientRecord.moneyBackRefundedAt || null,
     hasStripeCustomer: !!clientRecord.stripeCustomerId,
     retellAgentId: clientRecord.retellAgentId || null,
     retellPhoneNumber: clientRecord.retellPhoneNumber || null,
@@ -371,6 +379,11 @@ const PLAN_MINUTES = { starter: 250, growth: 750 };
 // cancelled and comes back through the self-service portal doesn't get a
 // second trial -- Stripe would otherwise happily grant one every time.
 const FREE_TRIAL_DAYS = 14;
+// Matches the "30-day money-back guarantee" promised on the pricing page
+// and in the FAQ -- both now measured from the same event, a client's
+// firstChargeAt (set below, in the invoice.paid webhook handler), not from
+// checkout/signup, which can be up to FREE_TRIAL_DAYS earlier.
+const MONEY_BACK_GUARANTEE_DAYS = 30;
 // Matches the Â£0.30-0.35/minute range already promised in the pricing
 // page's footnote -- Growth gets the better per-minute rate, consistent
 // with it already being the better per-minute deal on its base price too.
@@ -1293,17 +1306,28 @@ const server = http.createServer(async (req, res) => {
       // period's invoice -- the signal a client's minute allowance has
       // renewed, so their usage tracking (see the section above) starts
       // fresh instead of carrying last period's minutes forward forever.
-      if (event.type === 'invoice.paid') {
+            if (event.type === 'invoice.paid') {
         const invoice = event.data.object;
         const clientRecord = invoice.subscription ? db.getClientBySubscriptionId(invoice.subscription) : null;
         if (clientRecord) {
-          db.updateClient(clientRecord.id, {
+          const usageReset = {
             usageMinutesThisPeriod: 0,
             usagePeriodStart: new Date().toISOString(),
             usageWarnedAt: null,
             usageOverageNotifiedAt: null,
             overageMinutesBilled: null,
-          });
+          };
+          // A client's very first invoice.paid is their real first payment
+          // (this fires when Stripe actually charges the card -- at trial
+          // end if they had a trial, immediately if not). Recorded once and
+          // never overwritten by later renewals, so the self-service
+          // money-back guarantee below always measures from the right
+          // date -- see MONEY_BACK_GUARANTEE_DAYS above.
+          if (!clientRecord.firstChargeAt) {
+            usageReset.firstChargeAt = new Date().toISOString();
+            usageReset.firstChargeId = invoice.charge || invoice.payment_intent || null;
+          }
+          db.updateClient(clientRecord.id, usageReset);
           console.log(`Client ${clientRecord.id} usage reset for new billing period via Stripe webhook.`);
         }
       }
@@ -2044,11 +2068,81 @@ const server = http.createServer(async (req, res) => {
       const clientRecord = db.getClientByPortalToken(clientPortalStripeMatch[1]);
       if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
       const baseUrl = `${url.protocol}//${url.host}`;
-      const result = await createPortalSession({
+            const result = await createPortalSession({
         customerId: clientRecord.stripeCustomerId,
         returnUrl: `${baseUrl}/client-portal.html?token=${clientPortalStripeMatch[1]}`,
       });
       return sendJson(res, 200, result);
+    }
+
+    // Self-service 30-day money-back guarantee -- refunds a client's own
+    // first payment in full and cancels their subscription immediately,
+    // with no human needing to notice the request or process it by hand.
+    // Deliberately conservative: only a client's very first payment is
+    // ever touched, only once per account, and only inside the promised
+    // window -- see MONEY_BACK_GUARANTEE_DAYS above.
+    const clientPortalRefundGuaranteeMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/refund-guarantee$/);
+    if (clientPortalRefundGuaranteeMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPortalToken(clientPortalRefundGuaranteeMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+
+      if (clientRecord.moneyBackRefundedAt) {
+        return sendJson(res, 400, { error: 'Your money-back guarantee has already been used on this account.' });
+      }
+      if (!clientRecord.firstChargeAt || !clientRecord.firstChargeId) {
+        return sendJson(res, 400, {
+          error: "We don't have a completed payment on file yet for this account, so there's nothing to refund.",
+        });
+      }
+      const chargedAtMs = new Date(clientRecord.firstChargeAt).getTime();
+      const deadlineMs = chargedAtMs + MONEY_BACK_GUARANTEE_DAYS * 24 * 60 * 60 * 1000;
+      if (Date.now() > deadlineMs) {
+        return sendJson(res, 400, {
+          error: 'The 30-day window on your first payment has passed, so this guarantee no longer applies -- you can still cancel any time from "Manage my subscription" above.',
+        });
+      }
+
+      try {
+        const refundResult = await createRefund({ chargeId: clientRecord.firstChargeId });
+        if (refundResult.demoMode) {
+          return sendJson(res, 200, refundResult);
+        }
+
+        if (clientRecord.stripeSubscriptionId && clientRecord.status !== 'cancelled') {
+          await cancelSubscriptionImmediately({ subscriptionId: clientRecord.stripeSubscriptionId });
+        }
+
+        const updated = db.updateClient(clientRecord.id, {
+          moneyBackRefundedAt: new Date().toISOString(),
+          status: 'cancelled',
+          cancelledAt: new Date().toISOString(),
+        });
+
+        const ownerEmail = clientRecord.intake?.contactEmail;
+        if (ownerEmail) {
+          try {
+            await sendEmail({
+              to: ownerEmail,
+              subject: 'Your Dispatch AI refund has been issued',
+              text: `Your first payment has been refunded in full under our 30-day money-back guarantee, and your subscription has been cancelled -- no further charges will happen.\n\nIf that was a mistake, or you'd like to come back in future, you're welcome to resubscribe any time from your client portal.`,
+              fromName: 'Dispatch AI',
+            });
+          } catch (err) {
+            console.error(`Refund confirmation email failed for client ${clientRecord.id}:`, err.message || err);
+          }
+        }
+        await notifyFounder({
+          companyName: clientRecord.intake?.companyName,
+          reason: 'Used the 30-day money-back guarantee -- refunded automatically and subscription cancelled.',
+        });
+
+        return sendJson(res, 200, { ...clientPortalView(updated), refunded: true });
+      } catch (err) {
+        console.error(`Money-back guarantee refund failed for client ${clientRecord.id}:`, err.message || err);
+        return sendJson(res, 500, {
+          error: "Something went wrong issuing the refund. Please try again, or get in touch and we'll sort it out directly.",
+        });
+      }
     }
 
     const clientPortalPhoneAgentMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/create-phone-agent$/);
