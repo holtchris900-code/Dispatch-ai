@@ -5,6 +5,8 @@
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
+    gtag('consent', 'default', { analytics_storage: 'denied' });
+  if (localStorage.getItem('dispatchai_cookie_consent') === 'granted') { gtag('consent', 'update', { analytics_storage: 'granted' }); }
   gtag('js', new Date());
   gtag('config', 'G-3SYVZ5LZHN');
 </script>
@@ -918,6 +920,29 @@ voiceDemoEndBtn.addEventListener('click', async () => {
   }
   resetToIdle();
 });
+<div id="cookieBanner" style="display:none; position:fixed; left:16px; right:16px; bottom:16px; z-index:9999; background:#15181d; border:1px solid #262b32; border-radius:12px; padding:16px 18px; color:#efe9dd; font-family:system-ui,sans-serif; font-size:13.5px; max-width:480px; margin:0 auto; box-shadow:0 8px 24px rgba(0,0,0,0.4);">
+  <p style="margin:0 0 12px; color:#8e95a0;">We use a small amount of analytics (Google Analytics) to see how visitors use this site. No ads, nothing sold. <a href="/privacy" style="color:#e3a855;">Privacy Policy</a></p>
+  <div style="display:flex; gap:10px;">
+    <button id="cookieAccept" style="flex:1; background:#e3a855; color:#0b0d10; border:none; border-radius:8px; padding:9px 14px; font-weight:600; font-size:13.5px; cursor:pointer;">Accept</button>
+    <button id="cookieDecline" style="flex:1; background:transparent; color:#8e95a0; border:1px solid #262b32; border-radius:8px; padding:9px 14px; font-weight:600; font-size:13.5px; cursor:pointer;">Decline</button>
+  </div>
+</div>
+<script>
+(function () {
+  var consent = localStorage.getItem('dispatchai_cookie_consent');
+  var banner = document.getElementById('cookieBanner');
+  if (!consent) { banner.style.display = 'block'; }
+  document.getElementById('cookieAccept').addEventListener('click', function () {
+    localStorage.setItem('dispatchai_cookie_consent', 'granted');
+    gtag('consent', 'update', { analytics_storage: 'granted' });
+    banner.style.display = 'none';
+  });
+  document.getElementById('cookieDecline').addEventListener('click', function () {
+    localStorage.setItem('dispatchai_cookie_consent', 'denied');
+    banner.style.display = 'none';
+  });
+})();
+</script>
 </script>
 </body>
 </html>
