@@ -138,7 +138,11 @@
         </div>
       </fieldset>
 
-      <button class="btn btn-primary" type="submit" style="justify-self:start;">Generate my AI agent's script</button>
+           <div class="field" style="display:flex; align-items:flex-start; gap:10px;">
+        <input type="checkbox" id="agreeTerms" name="agreeTerms" required style="margin-top:4px; width:auto;" />
+        <label for="agreeTerms" style="font-weight:400;">I agree to Dispatch AI's <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>.</label>
+      </div>
+ 
     </form>
 
     <div id="result" style="display:none; margin-top: 32px;">
@@ -148,7 +152,7 @@
     </div>
   </section>
 
-  <footer>Dispatch AI — MVP prototype.</footer>
+   <footer>Dispatch AI — AI phone &amp; chat agents for home service businesses. <a href="mailto:dispatchai.uk@gmail.com">dispatchai.uk@gmail.com</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>
 </div>
 
 <div class="help-chat-widget" id="helpChatWidget">
