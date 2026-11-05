@@ -1663,6 +1663,7 @@ const server = http.createServer(async (req, res) => {
         outreachApprovedAt: new Date().toISOString(),
       });
       return sendJson(res, 200, updated);
+          }
     // Lets the client manually ask for a review for one specific past
     // customer (unlike the time-based "next service" reminder above, this
     // is always client-initiated -- there's no "due date" for asking for a
@@ -1694,8 +1695,6 @@ const server = http.createServer(async (req, res) => {
         outreachDraftedAt: new Date().toISOString(),
       });
       return sendJson(res, 200, { pastCustomer: updated });
-    }
-
     }
 
     // Actually sends the approved reminder, via the same Resend integration
