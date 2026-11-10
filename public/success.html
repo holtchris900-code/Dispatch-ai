@@ -57,6 +57,7 @@
 <script>
 const params = new URLSearchParams(window.location.search);
 const sessionId = params.get('session_id');
+if (sessionId && typeof gtag === 'function') { gtag('event', 'checkout_success'); }
 const manageBtn = document.getElementById('manageBtn');
 const manageResult = document.getElementById('manageResult');
 
@@ -144,4 +145,3 @@ if (sessionId) {
 </script>
 </body>
 </html>
-
