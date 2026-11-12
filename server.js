@@ -2448,11 +2448,49 @@ const server = http.createServer(async (req, res) => {
 
     const clientApproveMatch = pathname.match(/^\/api\/clients\/([^/]+)\/approve$/);
     if (clientApproveMatch && req.method === 'POST') {
-      const updated = db.updateClient(clientApproveMatch[1], {
+      const clientRecord = db.getClient(clientApproveMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+
+      let updated = db.updateClient(clientApproveMatch[1], {
         status: 'approved',
         approvedAt: new Date().toISOString(),
       });
-      if (!updated) return sendJson(res, 404, { error: 'not found' });
+
+      // Same as the auto-approval flow elsewhere in this file: the moment a
+      // manually-reviewed client is approved, immediately generate a real
+      // Stripe checkout link and email it to them -- this used to depend on
+      // the founder remembering to copy a link and send it by hand.
+      if (clientRecord.intake?.contactEmail) {
+        const baseUrl = `${url.protocol}//${url.host}`;
+        const checkout = await createCheckoutSession({
+          clientId: clientRecord.id,
+          priceId: process.env.STRIPE_PRICE_ID_STARTER,
+          companyName: clientRecord.intake?.companyName,
+          trialDays: clientRecord.paidAt ? 0 : FREE_TRIAL_DAYS,
+          successUrl: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${baseUrl}/?checkout=cancelled`,
+        });
+
+        if (!checkout.demoMode) {
+          db.updateClient(clientRecord.id, { pendingPlan: 'starter' });
+          const emailResult = await sendEmail({
+            to: clientRecord.intake.contactEmail,
+            subject: `${clientRecord.intake?.companyName || 'Your business'} -- your AI agent is ready to go live`,
+            text: `Hi,\n\nThanks for signing up for Dispatch AI. Your AI agent's script has been reviewed and it's ready to go.\n\nComplete your subscription here to go live:\n${checkout.url}\n\nOnce you're live, you'll be able to review and tweak the script again any time.\n\n-- Dispatch AI`,
+            fromName: 'Dispatch AI',
+          });
+          updated = db.updateClient(clientRecord.id, {
+            customerEmailSentAt: emailResult.demoMode ? null : new Date().toISOString(),
+            customerEmailDemoMode: !!emailResult.demoMode,
+          });
+        } else {
+          await notifyFounder({
+            companyName: clientRecord.intake?.companyName,
+            reason: `Approved, but couldn't generate a real payment link yet (${checkout.message}). Send one manually from the dashboard once Stripe is configured.`,
+          });
+        }
+      }
+
       return sendJson(res, 200, updated);
     }
 
