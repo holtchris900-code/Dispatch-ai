@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -5,7 +6,7 @@
 <title>Your account — Dispatch AI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -31,9 +32,13 @@
       </div>
       <p style="color:var(--ink-soft); font-size:14px; margin-top:6px;">Everything about your Dispatch AI account, in one place.</p>
 
-      <div id="cancelledBox" style="display:none; margin-top:20px; padding:16px; border-radius:10px; background:#fef2f2; border:1px solid #fecaca;">
-        <div style="font-weight:600; color:#991b1b; margin-bottom:8px;">⚠️ Your subscription is cancelled</div>
-        <p style="font-size:13.5px; color:#7f1d1d; margin:0 0 12px;">Resubscribe any time to bring your AI agent back online.</p>
+      <div id="notLiveBanner" style="display:none; margin-top:18px; padding:14px 16px; border-radius:10px; background:#2e2512; border:1px solid #4a3a20; font-size:13.5px; color:#e8b86d;">
+        <strong>You're not live yet</strong> — set up your phone agent below to start taking real calls. <a href="#phoneSection" style="color:#e8b86d; font-weight:600; text-decoration:underline;">Jump to this step →</a>
+      </div>
+
+      <div id="cancelledBox" style="display:none; margin-top:20px; padding:16px; border-radius:10px; background:#341717; border:1px solid #4a2020;">
+        <div style="font-weight:600; color:#e88888; margin-bottom:8px;">⚠️ Your subscription is cancelled</div>
+        <p style="font-size:13.5px; color:#e88888; margin:0 0 12px;">Resubscribe any time to bring your AI agent back online.</p>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn btn-secondary resub-btn" data-plan="starter">Resubscribe — Starter</button>
           <button class="btn btn-secondary resub-btn" data-plan="growth">Resubscribe — Growth</button>
@@ -43,9 +48,14 @@
 
       <div id="paidSections" style="display:none;">
 
-        <div id="pendingEditNote" style="display:none; margin-top:20px; padding:14px; border-radius:10px; background:#eff6ff; border:1px solid #bfdbfe; font-size:13.5px; color:#1e40af;">
+        <div id="pendingEditNote" style="display:none; margin-top:20px; padding:14px; border-radius:10px; background:#152a3c; border:1px solid #1e3a52; font-size:13.5px; color:#7fb8e8;">
           📝 Your last script edit is awaiting a quick review before it goes live -- you'll keep the current script until then.
         </div>
+        <div class="section-block" id="phoneSection">
+          <h2>Your phone agent</h2>
+          <div id="phoneBox"></div>
+        </div>
+
         <div class="section-block" id="analyticsSection">
           <h2>How your AI is doing</h2>
           <p class="section-hint">Call &amp; chat volume over the last 14 days, how many turn into a booking, and how often a call needed the missed-call text-back.</p>
@@ -83,7 +93,7 @@
           <div id="billingResult" style="margin-top:10px; font-size:13px; display:none;"></div>
 
           <div id="moneyBackBlock" style="margin-top:14px; display:none;">
-            <button class="btn btn-secondary" id="moneyBackBtn" style="border-color:#b91c1c; color:#b91c1c;">Request a refund (30-day guarantee)</button>
+            <button class="btn btn-secondary" id="moneyBackBtn" style="border-color:#e88888; color:#e88888;">Request a refund (30-day guarantee)</button>
             <div id="moneyBackHint" class="section-hint" style="margin-top:6px;"></div>
             <div id="moneyBackResult" style="margin-top:10px; font-size:13px; display:none;"></div>
           </div>
@@ -108,11 +118,6 @@
           <p class="section-hint">Every conversation your AI has had with a real visitor, and whether it turned into a booking.</p>
           <button class="btn btn-secondary" id="refreshConvosBtn">Refresh</button>
           <div id="conversationsBox" style="margin-top:12px;"></div>
-        </div>
-
-        <div class="section-block">
-          <h2>Live phone agent</h2>
-          <div id="phoneBox"></div>
         </div>
 
         <div class="section-block">
@@ -148,18 +153,18 @@
     </div>
   </section>
 
-  <footer>Dispatch AI — MVP prototype.</footer>
+  <footer>Dispatch AI — AI phone &amp; chat agents for home service businesses. <a href="mailto:dispatchai.uk@gmail.com">dispatchai.uk@gmail.com</a></footer>
 </div>
 
 <style>
   .section-block { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
   .section-block h2 { font-size: 17px; margin: 0 0 6px; }
   .section-hint { font-size: 13px; color: var(--ink-soft); margin: 0 0 10px; }
-  .status-draft { background: #fef3c7; color: #92400e; }
-  .status-approved { background: #dcfce7; color: #166534; }
-  .status-generating { background: #e0e7ff; color: #3730a3; }
-  .status-paid { background: #dbeafe; color: #1e40af; }
-  .status-cancelled { background: #fee2e2; color: #991b1b; }
+  .status-draft { background: #2e2512; color: #e8b86d; }
+  .status-approved { background: #163322; color: #6fcf8e; }
+  .status-generating { background: #152a3c; color: #7fb8e8; }
+  .status-paid { background: #152a3c; color: #7fb8e8; }
+  .status-cancelled { background: #341717; color: #e88888; }
 
   /* Spreadsheet-style tables for Upcoming appointments & Customer jobs --
      a real grid of rows/columns rather than stacked cards, wrapped in a
@@ -169,9 +174,9 @@
   .data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   .data-table th, .data-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; white-space: nowrap; }
   .data-table td.wrap-cell { white-space: normal; min-width: 150px; }
-  .data-table thead th { background: #f8fafc; font-weight: 600; color: var(--ink-soft); white-space: nowrap; }
+  .data-table thead th { background: var(--surface-alt); font-weight: 600; color: var(--ink-soft); white-space: nowrap; }
   .data-table tbody tr:last-child td { border-bottom: none; }
-  .data-table tr.group-row td { background: #f1f5f9; font-weight: 600; color: var(--ink-soft); font-size: 12px; padding: 6px 10px; }
+  .data-table tr.group-row td { background: var(--surface); font-weight: 600; color: var(--ink-soft); font-size: 12px; padding: 6px 10px; }
   .data-table input.job-field, .data-table select.job-field, .data-table textarea.job-field { width: 100%; min-width: 110px; padding: 5px 6px; border-radius: 6px; border: 1px solid var(--line); font-size: 12px; box-sizing: border-box; font-family: inherit; }
   .data-table textarea.job-field { min-height: 42px; resize: vertical; }
 </style>
@@ -243,6 +248,7 @@ function render(data) {
   const paidSections = document.getElementById('paidSections');
 
   if (data.status === 'cancelled') {
+    document.getElementById('notLiveBanner').style.display = 'none';
     cancelledBox.style.display = 'block';
     paidSections.style.display = 'none';
     return;
@@ -250,6 +256,7 @@ function render(data) {
 
   cancelledBox.style.display = 'none';
   paidSections.style.display = 'block';
+  document.getElementById('notLiveBanner').style.display = data.retellPhoneNumber ? 'none' : 'block';
 
   document.getElementById('pendingEditNote').style.display = data.pendingScriptEdit ? 'block' : 'none';
   document.getElementById('scriptBox').value = data.script || '';
@@ -336,10 +343,10 @@ function renderPhone(data) {
       resultBox.textContent = 'Creating phone agent...';
       const data2 = await api('/create-phone-agent', { method: 'POST' });
       if (data2.demoMode) {
-        resultBox.innerHTML = '<span style="color:#9a3412;">' + data2.message + '</span>';
+        resultBox.innerHTML = '<span style="color:#e8b86d;">' + data2.message + '</span>';
         btn.disabled = false;
       } else if (data2.error) {
-        resultBox.innerHTML = '<span style="color:#b91c1c;">' + data2.error + '</span>';
+        resultBox.innerHTML = '<span style="color:#e88888;">' + data2.error + '</span>';
         btn.disabled = false;
       } else {
         load();
@@ -357,7 +364,7 @@ function renderCalendar(data) {
   const box = document.getElementById('calendarBox');
   if (data.googleCalendarNeedsReconnect) {
     box.innerHTML =
-      '<div style="font-size:13px; color:#b91c1c; margin-bottom:8px;">⚠️ Your calendar connection needs to be reconnected.</div>' +
+      '<div style="font-size:13px; color:#e88888; margin-bottom:8px;">⚠️ Your calendar connection needs to be reconnected.</div>' +
       '<a class="btn btn-secondary" href="/api/client-portal/' + token + '/google-calendar/connect">Reconnect Google Calendar</a>';
   } else if (data.googleCalendarConnectedAt) {
     box.innerHTML =
@@ -385,19 +392,19 @@ function renderUsage(data) {
   const used = data.usageMinutesThisPeriod || 0;
   const percent = Math.min(100, Math.round((used / includedMinutes) * 100));
   const overMinutes = Math.max(0, used - includedMinutes);
-  const barColor = overMinutes > 0 ? '#b91c1c' : percent >= 80 ? '#b45309' : '#146856';
+  const barColor = overMinutes > 0 ? '#e88888' : percent >= 80 ? '#e8b86d' : '#6fcf8e';
   box.innerHTML =
     '<div style="font-size:13.5px; font-weight:600; margin-bottom:6px;">' + used + ' / ' + includedMinutes + ' minutes used this billing period</div>' +
-    '<div style="background:#e5e7eb; border-radius:6px; height:8px; overflow:hidden;">' +
+    '<div style="background:var(--line); border-radius:6px; height:8px; overflow:hidden;">' +
     '<div style="width:' + percent + '%; background:' + barColor + '; height:100%;"></div></div>' +
-    (overMinutes > 0 ? '<div style="font-size:12.5px; color:#b91c1c; margin-top:4px;">' + overMinutes + ' minute(s) over -- billed automatically.</div>' : '');
+    (overMinutes > 0 ? '<div style="font-size:12.5px; color:#e88888; margin-top:4px;">' + overMinutes + ' minute(s) over -- billed automatically.</div>' : '');
 }
 const ANALYTICS_CHART_DAYS = 14;
 const OUTCOME_CHART_META = {
-  booked: { label: 'Booked', color: '#146856' },
-  unbooked_lead: { label: 'Unbooked lead', color: '#b45309' },
-  resolved_question: { label: 'Question answered', color: '#1e40af' },
-  not_reviewed: { label: 'Not reviewed yet', color: '#6b7280' },
+  booked: { label: 'Booked', color: '#6fcf8e' },
+  unbooked_lead: { label: 'Unbooked lead', color: '#e8b86d' },
+  resolved_question: { label: 'Question answered', color: '#7fb8e8' },
+  not_reviewed: { label: 'Not reviewed yet', color: 'var(--ink-faint)' },
 };
 
 function dayKey(d) {
@@ -498,7 +505,7 @@ function renderAnalytics(data) {
   const chatsChartHtml =
     '<div style="margin-bottom:18px;">' +
     '<div style="font-size:12.5px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;">Chats per day</div>' +
-    stackedBarChartSvg(dayKeys, [{ key: 'chats', color: '#146856' }], [chatCounts]) +
+    stackedBarChartSvg(dayKeys, [{ key: 'chats', color: 'var(--accent)' }], [chatCounts]) +
     '</div>';
 
   const callsChartHtml =
@@ -506,12 +513,12 @@ function renderAnalytics(data) {
     '<div style="font-size:12.5px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;">Calls per day</div>' +
     stackedBarChartSvg(
       dayKeys,
-      [{ key: 'handled', color: '#146856' }, { key: 'missed', color: '#b91c1c' }],
+      [{ key: 'handled', color: '#6fcf8e' }, { key: 'missed', color: '#e88888' }],
       [handledCallCounts, missedCallCounts]
     ) +
     '<div style="display:flex; gap:14px; margin-top:6px; font-size:12px; color:var(--ink-soft);">' +
-    '<span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:#146856; margin-right:5px;"></span>Handled</span>' +
-    '<span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:#b91c1c; margin-right:5px;"></span>Missed (text-back sent)</span>' +
+    '<span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:#6fcf8e; margin-right:5px;"></span>Handled</span>' +
+    '<span><span style="display:inline-block; width:9px; height:9px; border-radius:2px; background:#e88888; margin-right:5px;"></span>Missed (text-back sent)</span>' +
     '</div></div>';
 
   const outcomeCounts = { booked: 0, unbooked_lead: 0, resolved_question: 0, not_reviewed: 0 };
@@ -566,7 +573,7 @@ function renderConversations(conversations) {
       const isSent = c.followUpStatus === 'sent';
       followUpHtml =
         '<div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--line);">' +
-        '<div style="font-size:12px; font-weight:600; color:#374151; margin-bottom:6px;">Follow-up draft' + (isSent ? ' (Sent ✓)' : isApproved ? ' (Approved ✓)' : '') + '</div>' +
+        '<div style="font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;">Follow-up draft' + (isSent ? ' (Sent ✓)' : isApproved ? ' (Approved ✓)' : '') + '</div>' +
         '<input type="text" class="followup-subject" data-id="' + c.id + '" value="' + escapeAttr(c.followUpSubject || '') + '" ' + (isSent ? 'disabled' : '') + ' style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; margin-bottom:6px;" />' +
         '<textarea class="followup-body" data-id="' + c.id + '" ' + (isSent ? 'disabled' : '') + ' style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--line); font-size:12.5px; min-height:70px;">' + escapeAttr(c.followUpBody || '') + '</textarea>' +
         '<div style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">' +
@@ -579,7 +586,7 @@ function renderConversations(conversations) {
     return '<div style="border:1px solid var(--line); border-radius:10px; padding:10px; margin-bottom:8px;">' +
       '<div style="display:flex; justify-content:space-between; gap:10px; font-size:12px; color:var(--ink-soft);"><span>' + new Date(c.updatedAt).toLocaleString() + '</span><span>' + outcomeLabel + '</span></div>' +
       (contactBits ? '<div style="font-size:12.5px; margin-top:4px;">' + contactBits + '</div>' : '') +
-      (c.summary ? '<div style="font-size:12.5px; color:#374151; margin-top:4px;">' + escapeAttr(c.summary) + '</div>' : '') +
+      (c.summary ? '<div style="font-size:12.5px; color:var(--ink-soft); margin-top:4px;">' + escapeAttr(c.summary) + '</div>' : '') +
       '<details style="margin-top:6px;"><summary style="font-size:12px; color:var(--accent); cursor:pointer;">View full chat</summary>' +
       '<pre style="white-space:pre-wrap; font-size:11.5px; background:var(--surface); border-radius:6px; padding:8px; margin-top:6px;">' + escapeAttr(transcript) + '</pre></details>' +
       followUpHtml + '</div>';
@@ -613,11 +620,11 @@ function renderConversations(conversations) {
       btn.textContent = 'Sending...';
       const data = await api('/conversations/' + id + '/follow-up/send', { method: 'POST' });
       if (data.demoMode) {
-        resultBox.innerHTML = '<span style="color:#9a3412;">' + data.message + '</span>';
+        resultBox.innerHTML = '<span style="color:#e8b86d;">' + data.message + '</span>';
         btn.disabled = false;
         btn.textContent = 'Send now';
       } else if (data.error) {
-        resultBox.innerHTML = '<span style="color:#b91c1c;">' + data.error + '</span>';
+        resultBox.innerHTML = '<span style="color:#e88888;">' + data.error + '</span>';
         btn.disabled = false;
         btn.textContent = 'Send now';
       } else {
@@ -637,11 +644,11 @@ document.getElementById('saveScriptBtn').addEventListener('click', async () => {
   const data = await api('/script', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ script }) });
   resultBox.style.display = 'block';
   if (data.error) {
-    resultBox.innerHTML = '<span style="color:#b91c1c;">' + data.error + '</span>';
+    resultBox.innerHTML = '<span style="color:#e88888;">' + data.error + '</span>';
   } else if (data.autoApplied) {
-    resultBox.innerHTML = '<span style="color:#166534;">Saved and live.</span>';
+    resultBox.innerHTML = '<span style="color:#6fcf8e;">Saved and live.</span>';
   } else {
-    resultBox.innerHTML = '<span style="color:#9a3412;">Saved -- this edit needs a quick review before it goes live. You\'ll keep your current script until then.</span>';
+    resultBox.innerHTML = '<span style="color:#e8b86d;">Saved -- this edit needs a quick review before it goes live. You\'ll keep your current script until then.</span>';
   }
   btn.disabled = false;
   btn.textContent = 'Save edits';
@@ -654,11 +661,11 @@ document.getElementById('manageBillingBtn').addEventListener('click', async () =
   resultBox.textContent = 'Generating link...';
   const data = await api('/portal', { method: 'POST' });
   if (data.demoMode) {
-    resultBox.innerHTML = '<span style="color:#9a3412;">' + data.message + '</span>';
+    resultBox.innerHTML = '<span style="color:#e8b86d;">' + data.message + '</span>';
   } else if (data.url) {
     window.location.href = data.url;
   } else {
-    resultBox.innerHTML = '<span style="color:#b91c1c;">Something went wrong generating the link.</span>';
+    resultBox.innerHTML = '<span style="color:#e88888;">Something went wrong generating the link.</span>';
   }
 });
 
@@ -673,14 +680,14 @@ document.getElementById('moneyBackBtn').addEventListener('click', async () => {
   const data = await api('/refund-guarantee', { method: 'POST' });
   btn.disabled = false;
   if (data.demoMode) {
-    resultBox.innerHTML = '<span style="color:#9a3412;">' + data.message + '</span>';
+    resultBox.innerHTML = '<span style="color:#e8b86d;">' + data.message + '</span>';
   } else if (data.error) {
-    resultBox.innerHTML = '<span style="color:#b91c1c;">' + data.error + '</span>';
+    resultBox.innerHTML = '<span style="color:#e88888;">' + data.error + '</span>';
   } else if (data.refunded) {
-    resultBox.innerHTML = '<span style="color:#15803d;">Refund issued and subscription cancelled. A confirmation has been sent to your email.</span>';
+    resultBox.innerHTML = '<span style="color:#6fcf8e;">Refund issued and subscription cancelled. A confirmation has been sent to your email.</span>';
     load();
   } else {
-    resultBox.innerHTML = '<span style="color:#b91c1c;">Something went wrong issuing the refund.</span>';
+    resultBox.innerHTML = '<span style="color:#e88888;">Something went wrong issuing the refund.</span>';
   }
 });
 
@@ -693,11 +700,11 @@ document.querySelectorAll('.resub-btn').forEach((btn) => {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ plan: btn.dataset.plan }),
     });
     if (data.demoMode) {
-      resultBox.innerHTML = '<span style="color:#9a3412;">' + data.message + '</span>';
+      resultBox.innerHTML = '<span style="color:#e8b86d;">' + data.message + '</span>';
     } else if (data.url) {
       window.location.href = data.url;
     } else {
-      resultBox.innerHTML = '<span style="color:#b91c1c;">Something went wrong generating the link.</span>';
+      resultBox.innerHTML = '<span style="color:#e88888;">Something went wrong generating the link.</span>';
     }
   });
 });
@@ -716,7 +723,7 @@ document.getElementById('saveReviewLinkBtn').addEventListener('click', async () 
   btn.textContent = 'Saving...';
   await api('/review-link', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reviewLink }) });
   resultBox.style.display = 'block';
-  resultBox.innerHTML = '<span style="color:#166534;">Saved.</span>';
+  resultBox.innerHTML = '<span style="color:#6fcf8e;">Saved.</span>';
   btn.disabled = false;
   btn.textContent = 'Save review link';
 });
@@ -729,9 +736,9 @@ document.getElementById('saveServiceM8KeyBtn').addEventListener('click', async (
   const data = await api('/service-m8', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ serviceM8ApiKey }) });
   resultBox.style.display = 'block';
   if (data.error) {
-    resultBox.innerHTML = '<span style="color:#b91c1c;">' + escapeAttr(data.error) + '</span>';
+    resultBox.innerHTML = '<span style="color:#e88888;">' + escapeAttr(data.error) + '</span>';
   } else {
-    resultBox.innerHTML = '<span style="color:#166534;">Saved.</span>';
+    resultBox.innerHTML = '<span style="color:#6fcf8e;">Saved.</span>';
     document.getElementById('serviceM8KeyInput').value = '';
     document.getElementById('serviceM8KeyStatus').textContent = data.hasServiceM8Key ? 'Connected ✅' : 'Not connected yet';
   }
@@ -747,11 +754,11 @@ document.getElementById('regenerateBtn').addEventListener('click', async () => {
     const newUrl = window.location.pathname + '?token=' + data.token;
     window.history.replaceState(null, '', newUrl);
     resultBox.style.display = 'block';
-    resultBox.innerHTML = '<span style="color:#166534;">Done -- this page now uses your new link. Update any bookmark to this new address.</span>';
+    resultBox.innerHTML = '<span style="color:#6fcf8e;">Done -- this page now uses your new link. Update any bookmark to this new address.</span>';
     load();
   } else {
     resultBox.style.display = 'block';
-    resultBox.innerHTML = '<span style="color:#b91c1c;">Something went wrong.</span>';
+    resultBox.innerHTML = '<span style="color:#e88888;">Something went wrong.</span>';
   }
 });
 
@@ -881,7 +888,7 @@ function renderAppointments(data) {
         await api('/appointments/' + id + '/cancel', { method: 'POST' });
         load();
       } catch (err) {
-        resultEl.innerHTML = '<span style="color:#b91c1c;">Something went wrong -- try again.</span>';
+        resultEl.innerHTML = '<span style="color:#e88888;">Something went wrong -- try again.</span>';
         btn.disabled = false;
       }
     });
@@ -902,7 +909,7 @@ function renderAppointments(data) {
       const startTime = box.querySelector('.appt-new-time[data-id="' + id + '"]').value;
       const resultEl = box.querySelector('.appt-result[data-id="' + id + '"]');
       if (!date || !startTime) {
-        resultEl.innerHTML = '<span style="color:#b91c1c;">Pick a date and time first.</span>';
+        resultEl.innerHTML = '<span style="color:#e88888;">Pick a date and time first.</span>';
         return;
       }
       btn.disabled = true;
@@ -912,16 +919,16 @@ function renderAppointments(data) {
           method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ date, startTime }),
         });
         if (result.conflict) {
-          resultEl.innerHTML = '<span style="color:#b91c1c;">That time is already taken -- try a different one.</span>';
+          resultEl.innerHTML = '<span style="color:#e88888;">That time is already taken -- try a different one.</span>';
           btn.disabled = false;
         } else if (result.error) {
-          resultEl.innerHTML = '<span style="color:#b91c1c;">' + escapeAttr(result.error) + '</span>';
+          resultEl.innerHTML = '<span style="color:#e88888;">' + escapeAttr(result.error) + '</span>';
           btn.disabled = false;
         } else {
           load();
         }
       } catch (err) {
-        resultEl.innerHTML = '<span style="color:#b91c1c;">Something went wrong -- try again.</span>';
+        resultEl.innerHTML = '<span style="color:#e88888;">Something went wrong -- try again.</span>';
         btn.disabled = false;
       }
     });
