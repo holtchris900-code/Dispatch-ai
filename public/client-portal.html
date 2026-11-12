@@ -353,8 +353,20 @@ function renderPhone(data) {
       }
     });
   } else {
+    const forwardingHtml = data.retellPhoneNumber
+      ? '<p class="section-hint" style="margin-top:0;">To start taking real calls, forward your existing business number to this one -- customers keep calling the number they already have, and it rings straight through to your AI.</p>' +
+        '<details style="margin-top:4px;">' +
+        '<summary style="font-size:13px; color:var(--accent); cursor:pointer; font-weight:600;">How do I forward my number? (UK networks &amp; landlines)</summary>' +
+        '<div style="margin-top:10px; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:8px; font-size:13px; color:var(--ink-soft);">' +
+        '<p style="margin:0 0 8px;">On the phone your customers currently call, open the dial pad like you\'re making a call, type this exactly, then press call:</p>' +
+        '<div style="background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-family:ui-monospace, monospace; font-size:13px; color:var(--ink); margin-bottom:8px; -webkit-user-select:all; user-select:all;">**21*' + escapeAttr(data.retellPhoneNumber) + '#</div>' +
+        '<p style="margin:0 0 8px;">This is the standard UK call-forwarding code -- it works the same way on EE, O2, Vodafone, Three, most virtual networks that run on them (giffgaff, Tesco Mobile, VOXI, Sky Mobile, iD Mobile and similar), and most landlines including BT.</p>' +
+        '<p style="margin:0 0 8px;">You should see an on-screen confirmation once it\'s set. Call your business number from a different phone to double-check it now rings your AI agent.</p>' +
+        '<p style="margin:0;">Changed your mind, or it didn\'t work? Dial <strong style="color:var(--ink);">##21#</strong> and press call to turn forwarding off completely, then contact your phone provider if the code itself didn\'t go through -- a small number of plans handle this differently.</p>' +
+        '</div></details>'
+      : '';
     const numberLine = data.retellPhoneNumber
-      ? '<div style="font-size:13.5px; font-weight:600; margin-bottom:8px;">📞 Live number: ' + escapeAttr(data.retellPhoneNumber) + '</div>'
+      ? '<div style="font-size:13.5px; font-weight:600; margin-bottom:8px;">📞 Live number: ' + escapeAttr(data.retellPhoneNumber) + '</div>' + forwardingHtml
       : '<p class="section-hint">Your phone agent is created. Once a number is assigned to it, it\'ll show here.</p>';
     box.innerHTML = numberLine;
   }
