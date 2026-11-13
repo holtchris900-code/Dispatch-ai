@@ -166,8 +166,31 @@ async function notifyFounder({ companyName, reason }) {
       text: `A new signup needs a manual look before their AI agent's script can go out.\n\nBusiness: ${companyName}\nWhy: ${reason}\n\nCheck it in your dashboard: /dashboard`,
       fromName: 'Dispatch AI',
     });
-  } catch (err) {
+   } catch (err) {
     // Never let a notification failure affect the signup itself.
+  }
+}
+
+// Sends the founder an urgent heads-up for problems that are NOT about a
+// new signup needing review -- specifically a Stripe webhook failing, which
+// can otherwise leave a customer who has genuinely paid stuck looking like
+// they haven't. Deliberately separate from notifyFounder above so the
+// subject line and wording don't claim "needs your review" for something
+// that's actually broken. Same fail-safe behaviour: if FOLLOWUP_REPLY_TO
+// isn't set, or sending the alert itself fails, this quietly does nothing
+// rather than throwing and breaking the webhook response Stripe is waiting on.
+async function notifyFounderUrgent({ subject, details }) {
+  const founderEmail = process.env.FOLLOWUP_REPLY_TO;
+  if (!founderEmail) return;
+  try {
+    await sendEmail({
+      to: founderEmail,
+      subject: `Dispatch AI -- urgent: ${subject}`,
+      text: `${details}\n\nCheck it in your dashboard: /dashboard`,
+      fromName: 'Dispatch AI',
+    });
+  } catch (err) {
+    // Never let a notification failure affect the webhook response itself.
   }
 }
 
@@ -1256,8 +1279,12 @@ const server = http.createServer(async (req, res) => {
         process.env.STRIPE_WEBHOOK_SECRET
       );
 
-      if (!verification.valid) {
+       if (!verification.valid) {
         console.error('Stripe webhook rejected:', verification.reason);
+        await notifyFounderUrgent({
+          subject: 'a Stripe webhook was rejected',
+          details: `Stripe sent a webhook that failed signature verification (reason: ${verification.reason}). If this keeps happening, STRIPE_WEBHOOK_SECRET in Render is probably wrong or out of date -- while it's wrong, paying customers can get stuck looking like they haven't paid, because this event never gets processed.`,
+        });
         return sendJson(res, 400, { error: `Invalid webhook: ${verification.reason}` });
       }
 
@@ -1280,9 +1307,13 @@ const server = http.createServer(async (req, res) => {
             stripeSubscriptionId: session.subscription || null,
             stripeCustomerId: session.customer || null,
           });
-          console.log(`Client ${clientId} marked as paid via Stripe webhook.`);
-        } else {
+          console.log(`Client ${clientId} marked as paid via Stripe 
+          } else {
           console.warn('Stripe webhook: checkout.session.completed with unknown client_reference_id', clientId);
+          await notifyFounderUrgent({
+            subject: 'a payment came in that could not be matched to a client',
+            details: `Stripe confirmed a checkout (client_reference_id: ${clientId || '(none)'}), but no matching client record was found, so their account was never marked as paid. Check this customer manually -- they have likely paid and are stuck seeing a "need to be on a paid plan" message.`,
+          });
         }
       }
 
