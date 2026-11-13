@@ -1307,8 +1307,8 @@ const server = http.createServer(async (req, res) => {
             stripeSubscriptionId: session.subscription || null,
             stripeCustomerId: session.customer || null,
           });
-          console.log(`Client ${clientId} marked as paid via Stripe 
-          } else {
+                    console.log(`Client ${clientId} marked as paid via Stripe webhook.`);
+        } else {
           console.warn('Stripe webhook: checkout.session.completed with unknown client_reference_id', clientId);
           await notifyFounderUrgent({
             subject: 'a payment came in that could not be matched to a client',
