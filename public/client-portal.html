@@ -994,5 +994,35 @@ function downloadJobsCsv(jobs) {
   URL.revokeObjectURL(url);
 }
 </script>
+  <!-- Mobile layout for the Upcoming appointments & Customer jobs tables -->
+<style>
+  @media (max-width: 640px) {
+    .data-table-wrap { overflow-x: visible; border: none; border-radius: 0; }
+    .data-table thead { display: none; }
+    .data-table, .data-table tbody, .data-table tr, .data-table td { display: block; width: 100%; box-sizing: border-box; }
+    .data-table tr.job-row, .data-table tr.appt-row { background: var(--surface-alt); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; padding: 8px 0; }
+    .data-table td { border-bottom: none !important; white-space: normal; padding: 6px 14px; min-width: 0 !important; font-size: 13.5px; }
+    .data-table td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 4px; }
+    .data-table tr.group-row td { background: none; padding: 14px 2px 8px; font-size: 13px; }
+    .data-table input.job-field, .data-table select.job-field, .data-table textarea.job-field { min-width: 0; font-size: 16px; padding: 8px 10px; }
+    .data-table .btn { font-size: 14px !important; padding: 9px 16px !important; }
+  }
+</style>
+<script>
+  (function () {
+    function labelTables() {
+      document.querySelectorAll('.data-table').forEach(function (table) {
+        var headings = Array.prototype.map.call(table.querySelectorAll('thead th'), function (th) { return th.textContent; });
+        table.querySelectorAll('tbody tr:not(.group-row)').forEach(function (row) {
+          Array.prototype.forEach.call(row.children, function (td, i) {
+            if (headings[i] && !td.hasAttribute('data-label')) td.setAttribute('data-label', headings[i]);
+          });
+        });
+      });
+    }
+    labelTables();
+    new MutationObserver(labelTables).observe(document.body, { childList: true, subtree: true });
+  })();
+</script>
 </body>
 </html>
