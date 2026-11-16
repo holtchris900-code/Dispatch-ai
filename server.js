@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const db = require('./lib/db');
 const { callClaude } = require('./lib/claude');
 const { buildScriptGenerationPrompt, DEMO_SYSTEM_PROMPT, buildPersonalizedDemoPrompt } = require('./lib/scriptPrompt');
+const { demoPromptFor } = require('./lib/demoPrompts');
 const { HELP_CHAT_SYSTEM_PROMPT } = require('./lib/helpChatPrompt');
 const { buildWidgetChatSystemPrompt } = require('./lib/widgetChatPrompt');
 const { buildConversationInsightPrompt, parseConversationInsight } = require('./lib/conversationInsightPrompt');
@@ -1466,7 +1467,7 @@ const server = http.createServer(async (req, res) => {
       const system =
         companyName && companyName.trim()
           ? buildPersonalizedDemoPrompt(companyName.trim(), trade ? trade.trim() : '')
-          : DEMO_SYSTEM_PROMPT;
+                    : demoPromptFor(req.headers.referer);
       const result = await callClaude({ system, messages });
       return sendJson(res, 200, result);
     }
@@ -1500,7 +1501,7 @@ const server = http.createServer(async (req, res) => {
 
       const created = await createPhoneAgent({
         companyName: 'Dispatch AI (live voice demo)',
-        script: DEMO_SYSTEM_PROMPT,
+        script: demoPromptFor(''),
       });
 
       if (created.demoMode) {
