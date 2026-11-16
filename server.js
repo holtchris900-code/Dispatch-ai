@@ -1586,7 +1586,7 @@ const server = http.createServer(async (req, res) => {
           const baseUrl = `${url.protocol}//${url.host}`;
           const checkout = await createCheckoutSession({
             clientId: id,
-            priceId: process.env.STRIPE_PRICE_ID_STARTER,
+            priceId: intake.plan === 'growth' ? process.env.STRIPE_PRICE_ID_GROWTH : process.env.STRIPE_PRICE_ID_STARTER,
             companyName: intake.companyName,
             trialDays: FREE_TRIAL_DAYS, // brand-new signup -- always their first checkout
             successUrl: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -1595,7 +1595,7 @@ const server = http.createServer(async (req, res) => {
           });
 
           if (!checkout.demoMode) {
-            db.updateClient(id, { pendingPlan: 'starter' });
+          db.updateClient(id, { pendingPlan: intake.plan === 'growth' ? 'growth' : 'starter' });
             const emailResult = await sendEmail({
               to: intake.contactEmail,
               subject: `${intake.companyName} -- your AI agent is ready to go live`,
@@ -2500,7 +2500,7 @@ const server = http.createServer(async (req, res) => {
         const baseUrl = `${url.protocol}//${url.host}`;
         const checkout = await createCheckoutSession({
           clientId: clientRecord.id,
-          priceId: process.env.STRIPE_PRICE_ID_STARTER,
+         priceId: clientRecord.intake?.plan === 'growth' ? process.env.STRIPE_PRICE_ID_GROWTH : process.env.STRIPE_PRICE_ID_STARTER,
           companyName: clientRecord.intake?.companyName,
           trialDays: clientRecord.paidAt ? 0 : FREE_TRIAL_DAYS,
           successUrl: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -2508,7 +2508,7 @@ const server = http.createServer(async (req, res) => {
         });
 
         if (!checkout.demoMode) {
-          db.updateClient(clientRecord.id, { pendingPlan: 'starter' });
+         db.updateClient(clientRecord.id, { pendingPlan: clientRecord.intake?.plan === 'growth' ? 'growth' : 'starter' });
           const emailResult = await sendEmail({
             to: clientRecord.intake.contactEmail,
             subject: `${clientRecord.intake?.companyName || 'Your business'} -- your AI agent is ready to go live`,
