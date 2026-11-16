@@ -1254,6 +1254,10 @@ function serveStaticFile(req, res, urlPath) {
       return res.end('Not found');
     }
     const ext = path.extname(filePath);
+       const supportChatPages = ['index.html', 'plumbers.html', 'electricians.html', 'client-login.html', 'client-portal.html', 'customer-portal.html', 'success.html', 'widget-guide.html', 'privacy.html', 'terms.html'];
+    if (ext === '.html' && supportChatPages.includes(path.basename(filePath))) {
+      content = Buffer.from(String(content).replace('</body>', '<script src="/support-widget.js" defer></script>\n</body>'));
+    } 
     res.writeHead(200, { 'content-type': MIME_TYPES[ext] || 'application/octet-stream' });
     res.end(content);
   });
@@ -1516,12 +1520,11 @@ const server = http.createServer(async (req, res) => {
     // fictional client's AI receptionist) -- this one answers questions
     // about the form, pricing, and billing for the person signing up.
     if (pathname === '/api/help-chat' && req.method === 'POST') {
-      const { messages } = await readBody(req);
-      if (!Array.isArray(messages) || messages.length === 0) {
-        return sendJson(res, 400, { error: 'messages array is required' });
-      }
-      const result = await callClaude({ system: HELP_CHAT_SYSTEM_PROMPT, messages });
-      return sendJson(res, 200, result);
+       const { handleSupportChat } = require('./lib/supportChat');
+      const body = await readBody(req);
+      const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+      const out = await handleSupportChat({ body, ip, db });
+      return sendJson(res, out.status, out.body);
     }
 
     // --- Client onboarding / intake form -----------------------------------
