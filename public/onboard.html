@@ -29,6 +29,14 @@
           <label>Your email address</label>
           <input name="contactEmail" type="email" required placeholder="you@yourcompany.com" />
         </div>
+                <div class="field">
+          <label>Which plan would you like?</label>
+          <select name="plan" required>
+            <option value="" disabled selected>Choose a plan</option>
+            <option value="starter">Starter: £119/month, 250 minutes</option>
+            <option value="growth">Growth: £229/month, 750 minutes (most popular)</option>
+          </select>
+        </div>
         <div class="field">
           <label>Company name</label>
           <input name="companyName" required placeholder="e.g. Summit Air & Plumbing" />
