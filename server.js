@@ -1260,7 +1260,9 @@ function serveStaticFile(req, res, urlPath) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+    const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const protocol = forwardedProto === 'https' ? 'https' : 'http';
+  const url = new URL(req.url, `${protocol}://${req.headers.host}`);
   const pathname = url.pathname;
 
   try {
