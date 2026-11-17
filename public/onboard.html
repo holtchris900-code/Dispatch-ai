@@ -8,6 +8,31 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
+<style>
+  .signup-result { margin-top: 32px; display: grid; gap: 20px; outline: none; }
+  .signup-next { padding: 22px; border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: var(--radius-md); }
+  .signup-next h2 { font-size: 24px; margin: 0 0 8px; color: var(--ink); }
+  .signup-next p { color: var(--ink); margin: 0 0 16px; }
+  .signup-next-label, .signup-script-label { font-weight: 600; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  .signup-next ol { margin: 0 0 20px; padding-left: 22px; color: var(--ink); }
+  .signup-next li { margin-bottom: 8px; line-height: 1.5; }
+  .signup-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+  .signup-script { padding: 22px; border: 1px solid var(--line); background: var(--surface); border-radius: var(--radius-md); }
+  .signup-script h3 { font-size: 20px; margin: 0 0 6px; color: var(--accent); }
+  .signup-script-note { color: var(--ink-soft); font-size: 14px; margin: 0 0 16px; }
+  .script-body { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 18px; color: var(--ink); font-size: 15px; line-height: 1.65; overflow-wrap: anywhere; }
+  .script-body h4 { font-family: "Inter", sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin: 22px 0 8px; }
+  .script-body h4:first-child { margin-top: 0; }
+  .script-body p { margin: 0 0 10px; color: var(--ink); }
+  .script-body ul { margin: 0 0 10px; padding-left: 20px; }
+  .script-body li { margin-bottom: 4px; }
+  .script-body strong { color: #fff; font-weight: 600; }
+  @media (max-width: 600px) {
+    .signup-next, .signup-script { padding: 16px; }
+    .script-body { padding: 14px; font-size: 14.5px; }
+    .signup-actions .btn { flex: 1 1 100%; }
+  }
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -20,7 +45,7 @@
 
   <section style="padding: 40px 0;">
     <h1 style="font-size:30px;">Tell us about your company</h1>
-    <p style="color:#4b5563; max-width: 60ch;">This takes about 10 minutes. Your answers feed directly into your AI agent's script — most scripts are checked and approved automatically within moments, and we'll email you a link to pay and go live as soon as that happens.</p>
+    <p style="color:var(--ink-soft); max-width: 60ch;">This takes about 10 minutes. Your answers feed directly into your AI agent's script — most scripts are checked and approved automatically within moments, and we'll email you a link to pay and go live as soon as that happens.</p>
 
     <form class="intake" id="intakeForm">
       <fieldset>
@@ -39,30 +64,25 @@
         </div>
         <div class="field">
           <label>Company name</label>
-          <input name="companyName" required placeholder="e.g. Summit Air & Plumbing" />
+          <input name="companyName" required placeholder="e.g. Summit Plumbing & Heating" />
         </div>
         <div class="field">
           <label>Trade(s) offered</label>
-          <input name="trades" placeholder="e.g. HVAC and plumbing" />
+          <input name="trades" placeholder="e.g. Plumbing and heating (Gas Safe registered)" />
         </div>
         <div class="field">
           <label>Service area</label>
-          <input name="serviceArea" placeholder="Towns / zip codes you cover" />
+          <input name="serviceArea" placeholder="Towns / postcodes you cover, e.g. Leeds, LS1-LS28" />
         </div>
         <div class="field">
           <label>Hours of operation</label>
-          <input name="hours" placeholder="e.g. 7am-7pm daily, 24/7 emergency dispatch" />
+          <input name="hours" placeholder="e.g. 8am-6pm Mon-Sat, 24/7 emergency call-outs" />
         </div>
         <div class="field">
           <label>Business time zone</label>
           <select name="timeZone">
             <option value="Europe/London" selected>UK (London)</option>
             <option value="Europe/Dublin">Ireland (Dublin)</option>
-            <option value="America/New_York">US Eastern (New York)</option>
-            <option value="America/Chicago">US Central (Chicago)</option>
-            <option value="America/Denver">US Mountain (Denver)</option>
-            <option value="America/Los_Angeles">US Pacific (Los Angeles)</option>
-            <option value="Australia/Sydney">Australia Eastern (Sydney)</option>
           </select>
           <div class="hint">Used so appointment times your AI books land at the correct time on your real calendar.</div>
         </div>
@@ -72,8 +92,8 @@
         <legend>2. Services & Pricing</legend>
         <div class="field">
           <label>Services offered & rough pricing</label>
-          <div class="hint">List each service and a price range, or say "technician confirms on-site" if you prefer not to quote by phone.</div>
-          <textarea name="servicesAndPricing" placeholder="e.g. AC repair - $99 diagnostic + parts, furnace install - quote on-site..."></textarea>
+          <div class="hint">List each service and a price range, or say "engineer confirms on-site" if you prefer not to quote by phone.</div>
+          <textarea name="servicesAndPricing" placeholder="e.g. Call-out - £65 incl. first half hour, boiler service - £85, new boiler - quote after free survey..."></textarea>
         </div>
         <div class="field">
           <label>Services you do NOT offer</label>
@@ -85,11 +105,11 @@
         <legend>3. Booking & Scheduling</legend>
         <div class="field">
           <label>Scheduling software (if any)</label>
-          <input name="schedulingSoftware" placeholder="e.g. Housecall Pro, ServiceTitan, Google Calendar" />
+          <input name="schedulingSoftware" placeholder="e.g. ServiceM8, Tradify, Jobber, Google Calendar" />
         </div>
         <div class="field">
           <label>Info to collect before booking</label>
-          <input name="bookingInfoNeeded" placeholder="e.g. name, address, phone, best callback time, issue description" />
+          <input name="bookingInfoNeeded" placeholder="e.g. name, address &amp; postcode, mobile, best callback time, description of the problem" />
         </div>
         <div class="field">
           <label>Typical appointment length (minutes)</label>
@@ -102,11 +122,11 @@
         <legend>4. Emergency Handling</legend>
         <div class="field">
           <label>What counts as an emergency for your business?</label>
-          <textarea name="emergencyDefinition" placeholder="e.g. no heat in winter, active water leak, gas smell"></textarea>
+          <textarea name="emergencyDefinition" placeholder="e.g. no heating or hot water, burst pipe, water through a ceiling"></textarea>
         </div>
         <div class="field">
           <label>What should the AI do differently for an emergency?</label>
-          <textarea name="emergencyHandling" placeholder="e.g. offer same-day dispatch, transfer to on-call number"></textarea>
+          <textarea name="emergencyHandling" placeholder="e.g. offer a same-day call-out, transfer to my on-call mobile"></textarea>
         </div>
         <div class="field">
           <label>After-hours / on-call transfer number (optional)</label>
@@ -126,7 +146,7 @@
         <legend>6. Common Questions</legend>
         <div class="field">
           <label>Your 5-10 most common phone questions & honest answers</label>
-          <textarea name="commonQuestions" placeholder="e.g. Do you finance? Yes, through Synchrony, 0% for 12 months..."></textarea>
+          <textarea name="commonQuestions" placeholder="e.g. Do you offer finance? Yes, 0% over 12 months on new boilers. Are you Gas Safe registered? Yes..."></textarea>
         </div>
         <div class="field">
           <label>Questions the AI should always hand off to a human</label>
@@ -153,10 +173,24 @@
        <button class="btn btn-primary" type="submit" style="justify-self:start;">Generate my AI agent's script</button>
     </form>
 
-    <div id="result" style="display:none; margin-top: 32px;">
-      <h2 style="font-size:22px;">Your draft script</h2>
-      <p id="resultMessage" style="color:#4b5563;">Here's a preview of what your AI agent's script will say.</p>
-      <pre id="scriptOutput" style="white-space:pre-wrap; background:#f6f7f9; border:1px solid #e5e7eb; border-radius:12px; padding:18px; font-size:13.5px;"></pre>
+    <div id="result" class="signup-result" style="display:none;" tabindex="-1">
+      <div class="signup-next">
+        <h2 id="resultTitle">Thanks, we're checking your script</h2>
+        <p id="resultMessage"></p>
+        <div class="signup-next-label">What happens next</div>
+        <ol id="resultSteps"></ol>
+        <div class="signup-actions">
+          <a class="btn btn-primary" href="/">Back to the homepage</a>
+          <button type="button" class="btn btn-secondary" id="resultHelpBtn">Ask us a question</button>
+        </div>
+      </div>
+
+      <div class="signup-script">
+        <div class="signup-script-label">Your draft script</div>
+        <h3 id="scriptTitle">AI receptionist call script</h3>
+        <p class="signup-script-note">This is what your AI agent will say on calls. You can change any of it from your account once you're set up.</p>
+        <div id="scriptOutput" class="script-body"></div>
+      </div>
     </div>
   </section>
 
@@ -209,26 +243,105 @@ form.addEventListener('submit', async (e) => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Unknown error');
 
-    document.getElementById('result').style.display = 'block';
-    document.getElementById('scriptOutput').textContent = data.script;
-
-    const messageEl = document.getElementById('resultMessage');
-    if (data.status === 'approved' && data.reviewMode === 'auto' && data.customerEmailSentAt) {
-      messageEl.textContent = `Good news — this passed our automatic check. Check ${payload.contactEmail} for a link to pay and go live.`;
-    } else if (data.status === 'approved' && data.reviewMode === 'auto') {
-      messageEl.textContent = "This passed our automatic check — we'll be in touch shortly with a link to pay and go live.";
-    } else {
-      messageEl.textContent = "We're taking a closer look at a couple of details before this goes live — we'll email you as soon as it's ready.";
-    }
-
-    window.scrollTo({ top: document.getElementById('result').offsetTop - 20, behavior: 'smooth' });
+    showSignupResult(data, payload);
   } catch (err) {
     alert('Something went wrong: ' + err.message);
-  } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = 'Generate my AI agent\'s script';
   }
 });
+
+// Shows the "what happens next" box and the formatted script, and hides
+// the form so it can't be sent twice by accident.
+function showSignupResult(data, payload) {
+  const email = payload.contactEmail;
+  const titleEl = document.getElementById('resultTitle');
+  const messageEl = document.getElementById('resultMessage');
+  const stepsEl = document.getElementById('resultSteps');
+  let steps;
+
+  if (data.status === 'approved' && data.reviewMode === 'auto') {
+    titleEl.textContent = "You're nearly live";
+    messageEl.textContent = data.customerEmailSentAt
+      ? `Your script passed our automatic check. We've emailed ${email} with a link to start your free trial.`
+      : `Your script passed our automatic check. We'll email ${email} shortly with a link to start your free trial.`;
+    steps = [
+      `Check your inbox at ${email} (and your spam folder, just in case).`,
+      "Tap the link and start your free trial. You won't be charged until the 14 days are up.",
+      "You'll land in your account, where you set up your phone number and chat.",
+    ];
+  } else {
+    titleEl.textContent = "Thanks, we're checking your script";
+    messageEl.textContent = "We're taking a closer look at a couple of details before this goes live.";
+    steps = [
+      "We review your script, usually within one working day.",
+      `We email ${email} as soon as it's ready, with a link to start your free trial.`,
+      "Start your trial and you'll land in your account, where you set up your phone number and chat.",
+    ];
+  }
+  stepsEl.replaceChildren(...steps.map((t) => { const li = document.createElement('li'); li.textContent = t; return li; }));
+
+  document.getElementById('scriptTitle').textContent = `AI receptionist call script for ${payload.companyName}`;
+  renderScript(document.getElementById('scriptOutput'), data.script || '');
+
+  form.style.display = 'none';
+  const result = document.getElementById('result');
+  result.style.display = 'grid';
+  window.scrollTo({ top: result.offsetTop - 80, behavior: 'smooth' });
+  result.focus({ preventScroll: true });
+}
+
+// Turns the AI's markdown-style script into readable headings, paragraphs
+// and lists, without showing the raw ##, ** or --- symbols. Builds DOM
+// nodes with textContent, so nothing in the script is run as HTML.
+function renderScript(container, text) {
+  container.replaceChildren();
+  let list = null;
+
+  function addInline(el, line) {
+    line.split(/(\*\*[^*]+\*\*)/g).forEach((part) => {
+      if (!part) return;
+      const bold = part.match(/^\*\*([^*]+)\*\*$/);
+      if (bold) {
+        const strong = document.createElement('strong');
+        strong.textContent = bold[1];
+        el.appendChild(strong);
+      } else {
+        el.appendChild(document.createTextNode(part.replace(/\*\*/g, '').replace(/(^|\s)\*(\S[^*]*\S|\S)\*(?=\s|$|[.,!?])/g, '$1$2')));
+      }
+    });
+  }
+
+  text.split(/\r?\n/).forEach((raw) => {
+    const line = raw.trim();
+    if (!line || /^([-*_]\s*){3,}$/.test(line)) { list = null; return; }
+
+    const heading = line.match(/^#{1,6}\s+(.*)$/);
+    if (heading) {
+      list = null;
+      const h = document.createElement('h4');
+      h.textContent = heading[1].replace(/\*\*/g, '').replace(/:$/, '');
+      container.appendChild(h);
+      return;
+    }
+
+    const bullet = line.match(/^(?:[-*•]|\d+[.)])\s+(.*)$/);
+    if (bullet) {
+      if (!list) { list = document.createElement('ul'); container.appendChild(list); }
+      const li = document.createElement('li');
+      addInline(li, bullet[1]);
+      list.appendChild(li);
+      return;
+    }
+
+    list = null;
+    const p = document.createElement('p');
+    addInline(p, line.replace(/^>\s*/, ''));
+    container.appendChild(p);
+  });
+}
+
+document.getElementById('resultHelpBtn').addEventListener('click', () => openHelpChat());
 
 // --- Help chat widget --------------------------------------------------
 const helpToggle = document.getElementById('helpChatToggle');
