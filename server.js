@@ -1558,79 +1558,30 @@ const server = http.createServer(async (req, res) => {
         demoMode: result.demoMode,
       });
 
-      // --- Automatic review ---------------------------------------------
-      // A second, independent AI pass reads the draft script back against
-      // the intake answers, looking specifically for the kinds of mistakes
-      // a human reviewer would have caught (missing pricing, contradictions,
-      // leftover placeholder text, wrong tone, a missing AI-disclosure
-      // greeting). If it's confident nothing is wrong, the client is
-      // auto-approved and sent a real payment link immediately by email --
-      // no waiting on the founder. If it's not confident, or anything at
-      // all goes wrong in this block, this fails SAFE-side: the client
-      // stays in manual "draft" review exactly like before this feature
-      // existed, and the founder gets emailed so nothing sits unnoticed.
-      //
-      // This whole step is skipped in demo mode (no ANTHROPIC_API_KEY) --
-      // there's no real script yet to check, so it falls back to the
-      // original fully-manual flow untouched.
-      if (!result.demoMode) {
-        const check = await checkScriptSafety(intake, result.text);
-
-        if (check.checked && check.safe) {
-          updated = db.updateClient(id, {
-            status: 'approved',
-            approvedAt: new Date().toISOString(),
-            reviewMode: 'auto',
-            reviewReason: null,
-          });
-
-          const baseUrl = `${url.protocol}//${url.host}`;
-          const checkout = await createCheckoutSession({
-            clientId: id,
-            priceId: intake.plan === 'growth' ? process.env.STRIPE_PRICE_ID_GROWTH : process.env.STRIPE_PRICE_ID_STARTER,
-            companyName: intake.companyName,
-            trialDays: FREE_TRIAL_DAYS, // brand-new signup -- always their first checkout
-            successUrl: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-
-            cancelUrl: `${baseUrl}/?checkout=cancelled`,
-          });
-
-          if (!checkout.demoMode) {
-          db.updateClient(id, { pendingPlan: intake.plan === 'growth' ? 'growth' : 'starter' });
-            const emailResult = await sendEmail({
-              to: intake.contactEmail,
-              subject: `${intake.companyName} -- your AI agent is ready to go live`,
-              text: `Hi,\n\nThanks for signing up for Dispatch AI. Your AI agent's script has been reviewed and it's ready to go.\n\nComplete your subscription here to go live:\n${checkout.url}\n\nOnce you're live, you'll be able to review and tweak the script again any time.\n\n-- Dispatch AI`,
-              fromName: 'Dispatch AI',
-            });
-            updated = db.updateClient(id, {
-              customerEmailSentAt: emailResult.demoMode ? null : new Date().toISOString(),
-              customerEmailDemoMode: !!emailResult.demoMode,
-            });
-          } else {
-            // Safe to auto-approve, but there's no real payment link to
-            // send (Stripe isn't fully configured yet) -- don't email a
-            // customer a broken link, tell the founder instead.
-            await notifyFounder({
-              companyName: intake.companyName,
-              reason: `Auto-approved, but couldn't generate a real payment link yet (${checkout.message}). Send one manually from the dashboard once Stripe is configured.`,
-            });
-          }
-        } else if (check.checked) {
-          updated = db.updateClient(id, {
-            reviewMode: 'manual',
-            reviewReason:
-              check.reason || "The automatic check couldn't confirm this script was safe to send without a look first.",
-          });
-          await notifyFounder({ companyName: intake.companyName, reason: updated.reviewReason });
-        }
-        // check.checked === false means Claude is in demo mode -- nothing
-        // to compare against yet, so this stays in the default manual
-        // "draft" review set a few lines up, exactly like before this
-        // feature existed.
-      }
+      // --- Customer reviews their own script --------------------------
+      // See lib/signupReview.js: an automatic check writes notes to the
+      // customer (not the founder), puts back the AI greeting if it's
+      // missing, and only holds a signup for the founder in cases of clear
+      // misuse. The customer then approves on the sign-up page and goes
+      // straight to payment (POST /api/onboard/approve below).
+      const { reviewNewSignup } = require('./lib/signupReview');
+      updated = await reviewNewSignup({ id, intake, script: result.text, demoMode: result.demoMode, db, notifyFounder, callClaude });
 
       return sendJson(res, 200, updated);
+    }
+
+    // The customer has read (and maybe edited) their script on the sign-up
+    // page and tapped "Approve": save it and hand back a Stripe checkout
+    // link so they can start their free trial straight away.
+    if (pathname === '/api/onboard/approve' && req.method === 'POST') {
+      const { approveSignup } = require('./lib/signupReview');
+      const out = await approveSignup({
+        body: await readBody(req),
+        baseUrl: `${url.protocol}//${url.host}`,
+        db, callClaude, createCheckoutSession, sendEmail, notifyFounder,
+        freeTrialDays: FREE_TRIAL_DAYS,
+      });
+      return sendJson(res, out.status, out.body);
     }
 
     // --- Past-customer portal (client-facing, no dashboard login) -----------
