@@ -27,6 +27,12 @@
   .script-body ul { margin: 0 0 10px; padding-left: 20px; }
   .script-body li { margin-bottom: 4px; }
   .script-body strong { color: #fff; font-weight: 600; }
+  .script-editor { width: 100%; min-height: 420px; box-sizing: border-box; background: var(--paper); color: var(--ink); border: 1px solid var(--accent-line); border-radius: var(--radius-sm); padding: 14px; font-family: inherit; font-size: 16px; line-height: 1.55; resize: vertical; }
+  .script-tools { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .signup-approve { padding: 22px; border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: var(--radius-md); }
+  .signup-approve p { color: var(--ink-soft); font-size: 14px; margin: 10px 0 0; }
+  .signup-approve .btn { width: 100%; justify-content: center; }
+  #approveResult { margin-top: 12px; font-size: 14px; }
   @media (max-width: 600px) {
     .signup-next, .signup-script { padding: 16px; }
     .script-body { padding: 14px; font-size: 14.5px; }
@@ -45,8 +51,16 @@
 
   <section style="padding: 40px 0;">
     <h1 style="font-size:30px;">Tell us about your company</h1>
-    <p style="color:var(--ink-soft); max-width: 60ch;">This takes about 10 minutes. Your answers feed directly into your AI agent's script — most scripts are checked and approved automatically within moments, and we'll email you a link to pay and go live as soon as that happens.</p>
+    <p style="color:var(--ink-soft); max-width: 60ch;">This takes about 10 minutes. Your answers feed directly into your AI agent's script. You'll see it straight away, can change anything that isn't right, and then start your 14-day free trial.</p>
 
+    <div id="checkoutCancelledNote" style="display:none; margin:18px 0; padding:16px 18px; border-radius:var(--radius-md); background:var(--accent-soft); border:1px solid var(--accent-line); color:var(--ink);">
+      <strong>No problem, your script is saved.</strong> We've emailed you a link to start your free trial whenever you're ready, so there's no need to fill this form in again.
+    </div>
+    <script>
+      if (new URLSearchParams(window.location.search).get('checkout') === 'cancelled') {
+        document.getElementById('checkoutCancelledNote').style.display = 'block';
+      }
+    </script>
     <form class="intake" id="intakeForm">
       <fieldset>
         <legend>1. Company Basics</legend>
@@ -190,6 +204,16 @@
         <h3 id="scriptTitle">AI receptionist call script</h3>
         <p class="signup-script-note">This is what your AI agent will say on calls. You can change any of it from your account once you're set up.</p>
         <div id="scriptOutput" class="script-body"></div>
+        <textarea id="scriptEditor" class="script-editor" style="display:none;" aria-label="Edit your script"></textarea>
+        <div class="script-tools" id="scriptTools" style="display:none;">
+          <button type="button" class="btn btn-secondary" id="editScriptBtn">Make changes</button>
+        </div>
+      </div>
+
+      <div class="signup-approve" id="approveBox" style="display:none;">
+        <button type="button" class="btn btn-primary" id="approveScriptBtn">Approve my script and start my free trial</button>
+        <p>Next you'll go to our secure payment page (Stripe). You won't be charged until your 14-day free trial ends, and you can cancel before then. You can still edit your script any time from your account.</p>
+        <div id="approveResult" role="status"></div>
       </div>
     </div>
   </section>
@@ -260,6 +284,11 @@ function showSignupResult(data, payload) {
   const stepsEl = document.getElementById('resultSteps');
   let steps;
 
+  if (data.signupStage === 'awaiting_customer_approval') {
+    setupCustomerApproval(data, payload);
+    return;
+  }
+
   if (data.status === 'approved' && data.reviewMode === 'auto') {
     titleEl.textContent = "You're nearly live";
     messageEl.textContent = data.customerEmailSentAt
@@ -274,7 +303,7 @@ function showSignupResult(data, payload) {
     titleEl.textContent = "Thanks, we're checking your script";
     messageEl.textContent = "We're taking a closer look at a couple of details before this goes live.";
     steps = [
-      "We review your script, usually within one working day.",
+      "We take a quick look at your signup.",
       `We email ${email} as soon as it's ready, with a link to start your free trial.`,
       "Start your trial and you'll land in your account, where you set up your phone number and chat.",
     ];
@@ -283,6 +312,90 @@ function showSignupResult(data, payload) {
 
   document.getElementById('scriptTitle').textContent = `AI receptionist call script for ${payload.companyName}`;
   renderScript(document.getElementById('scriptOutput'), data.script || '');
+
+  form.style.display = 'none';
+  const result = document.getElementById('result');
+  result.style.display = 'grid';
+  window.scrollTo({ top: result.offsetTop - 80, behavior: 'smooth' });
+  result.focus({ preventScroll: true });
+}
+
+// The customer checks their own script: shows the automatic check's notes,
+// lets them edit the script, and sends them straight to payment when they
+// approve it (POST /api/onboard/approve -- see lib/signupReview.js).
+function setupCustomerApproval(data, payload) {
+  const titleEl = document.getElementById('resultTitle');
+  const messageEl = document.getElementById('resultMessage');
+  const stepsEl = document.getElementById('resultSteps');
+  const labelEl = document.querySelector('.signup-next-label');
+  const notes = Array.isArray(data.reviewNotes) ? data.reviewNotes : [];
+
+  titleEl.textContent = 'Check your script, then approve it';
+  messageEl.textContent = "You know your business best. Read through what your AI will say to callers, fix anything that's wrong, then approve it to start your 14-day free trial.";
+  labelEl.textContent = notes.length ? 'Worth checking' : 'Our check';
+  const items = notes.length ? notes : ["We didn't spot anything to fix, but give it a quick read before you approve."];
+  stepsEl.replaceChildren(...items.map((t) => { const li = document.createElement('li'); li.textContent = t; return li; }));
+  document.querySelector('.signup-actions a[href="/"]').style.display = 'none';
+
+  document.getElementById('scriptTitle').textContent = `AI receptionist call script for ${payload.companyName}`;
+  document.querySelector('.signup-script-note').textContent = 'This is what your AI agent will say on calls. Tap "Make changes" to edit anything, such as prices, hours or the areas you cover.';
+  const output = document.getElementById('scriptOutput');
+  const editor = document.getElementById('scriptEditor');
+  const editBtn = document.getElementById('editScriptBtn');
+  renderScript(output, data.script || '');
+  editor.value = data.script || '';
+  document.getElementById('scriptTools').style.display = 'flex';
+  editBtn.onclick = () => {
+    const editing = editor.style.display !== 'none';
+    if (editing) {
+      renderScript(output, editor.value);
+      editor.style.display = 'none';
+      output.style.display = '';
+      editBtn.textContent = 'Make changes';
+    } else {
+      editor.style.display = 'block';
+      output.style.display = 'none';
+      editBtn.textContent = 'Preview my changes';
+      editor.focus();
+    }
+  };
+
+  const approveBox = document.getElementById('approveBox');
+  const approveBtn = document.getElementById('approveScriptBtn');
+  const approveResult = document.getElementById('approveResult');
+  approveBox.style.display = 'block';
+  approveBtn.onclick = async () => {
+    approveBtn.disabled = true;
+    approveBtn.textContent = 'Saving your script...';
+    approveResult.textContent = '';
+    try {
+      const res = await fetch('/api/onboard/approve', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: data.id, token: data.signupReviewToken, script: editor.value }),
+      });
+      const out = await res.json();
+      if (out.checkoutUrl) {
+        approveBtn.textContent = 'Taking you to payment...';
+        window.location.href = out.checkoutUrl;
+        return;
+      }
+      if (out.held) {
+        approveBox.innerHTML = '';
+        const p = document.createElement('p');
+        p.style.color = 'var(--ink)';
+        p.textContent = out.message;
+        approveBox.appendChild(p);
+        document.getElementById('scriptTools').style.display = 'none';
+        return;
+      }
+      throw new Error(out.error || 'Something went wrong. Please try again.');
+    } catch (err) {
+      approveResult.textContent = err.message || 'Something went wrong. Please try again.';
+      approveBtn.disabled = false;
+      approveBtn.textContent = 'Approve my script and start my free trial';
+    }
+  };
 
   form.style.display = 'none';
   const result = document.getElementById('result');
