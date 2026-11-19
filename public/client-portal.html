@@ -63,12 +63,42 @@
         </div>
         <div class="section-block" id="appointmentsSection">
           <h2>Upcoming appointments</h2>
-          <p class="section-hint">Every real, confirmed booking on your calendar -- grouped by day. Cancelling or changing the time here updates your real Google Calendar too, not just this list.</p>
+          <p class="section-hint">Every confirmed booking, from your AI or added by you -- grouped by day. If your Google Calendar is connected, adding, cancelling or changing a time here updates it too.</p>
+          <button type="button" class="btn btn-secondary add-toggle-btn" data-form="addApptForm">+ Add an appointment</button>
+          <form class="add-form" id="addApptForm" style="display:none;">
+            <label>Customer name<input name="customerName" required autocomplete="off"></label>
+            <label>Phone<input name="customerPhone" type="tel" autocomplete="off"></label>
+            <label>Email<input name="customerEmail" type="email" autocomplete="off"></label>
+            <div class="add-form-row">
+              <label>Date<input name="date" type="date" required></label>
+              <label>Start time<input name="startTime" type="time" required></label>
+            </div>
+            <label>How long (minutes)<input name="durationMinutes" type="number" min="15" step="15" placeholder="60"></label>
+            <label class="add-form-wide">What's the job?<textarea name="description" rows="2"></textarea></label>
+            <div class="add-form-actions">
+              <button type="submit" class="btn btn-primary">Save appointment</button>
+              <button type="button" class="btn btn-secondary add-cancel-btn" data-form="addApptForm">Cancel</button>
+            </div>
+            <div class="add-form-result" role="status"></div>
+          </form>
           <div id="appointmentsBox"></div>
         </div>
         <div class="section-block" id="customerJobsSection">
           <h2>Customer jobs</h2>
-          <p class="section-hint">Every job your AI has taken down from a caller or chat visitor, with their contact details -- edit any field and tap Save to fix a detail or add your own note. Download the whole list as a spreadsheet any time.</p>
+          <p class="section-hint">Every job your AI has taken down from a caller or chat visitor, plus any you add yourself, with their contact details -- edit any field and tap Save to fix a detail or add your own note. Download the whole list as a spreadsheet any time.</p>
+          <button type="button" class="btn btn-secondary add-toggle-btn" data-form="addJobForm">+ Add a job</button>
+          <form class="add-form" id="addJobForm" style="display:none;">
+            <label>Customer name<input name="customerName" autocomplete="off"></label>
+            <label>Phone<input name="customerPhone" type="tel" autocomplete="off"></label>
+            <label>Email<input name="customerEmail" type="email" autocomplete="off"></label>
+            <label>When they'd like it<input name="preferredTime" placeholder="e.g. next Tuesday morning" autocomplete="off"></label>
+            <label class="add-form-wide">What's the job?<textarea name="jobDescription" rows="2" required></textarea></label>
+            <div class="add-form-actions">
+              <button type="submit" class="btn btn-primary">Save job</button>
+              <button type="button" class="btn btn-secondary add-cancel-btn" data-form="addJobForm">Cancel</button>
+            </div>
+            <div class="add-form-result" role="status"></div>
+          </form>
           <div id="customerJobsBox"></div>
         </div>
         <div class="section-block" id="serviceM8Section">
@@ -1022,6 +1052,70 @@ function downloadJobsCsv(jobs) {
     }
     labelTables();
     new MutationObserver(labelTables).observe(document.body, { childList: true, subtree: true });
+  })();
+</script>
+<style>
+  .add-toggle-btn { margin: 4px 0 14px; }
+  .add-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; margin: 0 0 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-alt); }
+  .add-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+  .add-form input, .add-form textarea { padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-size: 16px; font-family: inherit; box-sizing: border-box; width: 100%; }
+  .add-form .add-form-wide, .add-form .add-form-actions, .add-form .add-form-result { grid-column: 1 / -1; }
+  .add-form-row { display: contents; }
+  .add-form-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .add-form-result { font-size: 13px; }
+  @media (max-width: 640px) { .add-form { grid-template-columns: 1fr; } }
+</style>
+<script>
+  // "+ Add an appointment" / "+ Add a job" -- lets the business owner add
+  // their own entries alongside what the AI logs (see lib/manualEntries.js).
+  (function () {
+    function toggle(formId, show) {
+      var f = document.getElementById(formId);
+      f.style.display = show ? 'grid' : 'none';
+      var btn = document.querySelector('.add-toggle-btn[data-form="' + formId + '"]');
+      if (btn) btn.style.display = show ? 'none' : '';
+      if (show) { var first = f.querySelector('input'); if (first) first.focus(); }
+    }
+    document.querySelectorAll('.add-toggle-btn').forEach(function (b) {
+      b.addEventListener('click', function () { toggle(b.dataset.form, true); });
+    });
+    document.querySelectorAll('.add-cancel-btn').forEach(function (b) {
+      b.addEventListener('click', function () { document.getElementById(b.dataset.form).reset(); toggle(b.dataset.form, false); });
+    });
+    function wire(formId, path, savedMessage) {
+      var form = document.getElementById(formId);
+      var result = form.querySelector('.add-form-result');
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var submit = form.querySelector('button[type="submit"]');
+        var label = submit.textContent;
+        submit.disabled = true; submit.textContent = 'Saving...'; result.textContent = '';
+        try {
+          var body = Object.fromEntries(new FormData(form).entries());
+          var out = await api(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+          if (out.error) throw new Error(out.error);
+          form.reset();
+          toggle(formId, false);
+          await load();
+          var note = document.createElement('div');
+          note.className = 'add-form-result';
+          note.style.color = '#6fcf8e';
+          note.style.margin = '0 0 12px';
+          note.textContent = typeof savedMessage === 'function' ? savedMessage(out) : savedMessage;
+          form.parentNode.insertBefore(note, form);
+          setTimeout(function () { note.remove(); }, 5000);
+        } catch (err) {
+          result.style.color = '#e88888';
+          result.textContent = err.message || 'Something went wrong. Please try again.';
+        } finally {
+          submit.disabled = false; submit.textContent = label;
+        }
+      });
+    }
+    wire('addApptForm', '/appointments/new', function (out) {
+      return out.addedToCalendar ? 'Appointment saved and added to your Google Calendar.' : 'Appointment saved.';
+    });
+    wire('addJobForm', '/jobs/new', 'Job saved.');
   })();
 </script>
 </body>

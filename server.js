@@ -1873,6 +1873,33 @@ const server = http.createServer(async (req, res) => {
     // e.g. fixing a misheard phone number, or marking a job done -- right
     // from the portal. Checks the job id actually belongs to THIS client,
     // not just any job id that happens to resolve to something.
+    // The business owner adds their own job or appointment from their
+    // account page (see lib/manualEntries.js). These must come before the
+    // /jobs/:id route below, which would otherwise treat "new" as a job id.
+    const clientPortalNewJobMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/jobs\/new$/);
+    if (clientPortalNewJobMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPortalToken(clientPortalNewJobMatch[1]);
+      if (!clientRecord || (clientRecord.status !== 'paid' && clientRecord.status !== 'cancelled')) {
+        return sendJson(res, 404, { error: 'not found' });
+      }
+      const { addManualJob } = require('./lib/manualEntries');
+      const out = addManualJob({ clientRecord, body: await readBody(req), db, pushJobToServiceM8IfConnected });
+      return sendJson(res, out.status, out.body);
+    }
+    const clientPortalNewApptMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/appointments\/new$/);
+    if (clientPortalNewApptMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPortalToken(clientPortalNewApptMatch[1]);
+      if (!clientRecord || (clientRecord.status !== 'paid' && clientRecord.status !== 'cancelled')) {
+        return sendJson(res, 404, { error: 'not found' });
+      }
+      const { addManualAppointment } = require('./lib/manualEntries');
+      const out = await addManualAppointment({
+        clientRecord, body: await readBody(req), db, googleCalendar,
+        getAccessToken: () => getGoogleAccessToken(clientRecord),
+      });
+      return sendJson(res, out.status, out.body);
+    }
+
     const clientPortalJobUpdateMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/jobs\/([^/]+)$/);
     if (clientPortalJobUpdateMatch && req.method === 'POST') {
       const clientRecord = db.getClientByPortalToken(clientPortalJobUpdateMatch[1]);
@@ -1957,6 +1984,13 @@ const server = http.createServer(async (req, res) => {
       const appt = db.getAppointmentById(clientPortalAppointmentRescheduleMatch[2]);
       if (!appt || appt.clientId !== clientRecord.id || appt.status === 'cancelled') {
         return sendJson(res, 404, { error: 'not found' });
+      }
+      // Appointments added by hand while Google Calendar wasn't connected
+      // only live in Dispatch AI, so they can be moved without it.
+      if (!appt.calendarEventId) {
+        const { rescheduleLocalAppointment } = require('./lib/manualEntries');
+        const out = rescheduleLocalAppointment({ appt, body: await readBody(req), db, googleCalendar });
+        return sendJson(res, out.status, out.body);
       }
       if (!googleCalendar.isConfigured() || !clientRecord.googleRefreshToken) {
         return sendJson(res, 400, { error: 'Google Calendar is not connected for this account.' });
