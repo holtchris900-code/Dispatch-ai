@@ -883,13 +883,34 @@ function renderCustomerJobs(data) {
   });
 }
 
-function apptDayKey(iso) {
-  return new Date(iso).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+// Appointment times are shown in the BUSINESS's time zone (saved on each
+// appointment), not the viewer's -- so a 9am booking reads 9am even when
+// the owner checks from abroad, and matches what "Change time" expects.
+// If the viewer is in a different zone, the zone name (e.g. BST) is added
+// so it's clear which clock the time is on.
+function apptZone(tz) {
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: tz || 'Europe/London' });
+    return tz || 'Europe/London';
+  } catch (err) {
+    return 'Europe/London';
+  }
 }
 
-function apptTimeRange(startAt, endAt) {
-  const opts = { hour: 'numeric', minute: '2-digit' };
-  return new Date(startAt).toLocaleTimeString(undefined, opts) + ' - ' + new Date(endAt).toLocaleTimeString(undefined, opts);
+function apptDayKey(iso, tz) {
+  return new Date(iso).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', timeZone: apptZone(tz) });
+}
+
+function apptTimeRange(startAt, endAt, tz) {
+  const zone = apptZone(tz);
+  const opts = { hour: 'numeric', minute: '2-digit', timeZone: zone };
+  const range = new Date(startAt).toLocaleTimeString(undefined, opts) + ' - ' + new Date(endAt).toLocaleTimeString(undefined, opts);
+  const viewerZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const sameOffset = new Date(startAt).toLocaleString('en-GB', { timeZone: zone }) === new Date(startAt).toLocaleString('en-GB', { timeZone: viewerZone });
+  if (sameOffset) return range;
+  const zoneName = new Intl.DateTimeFormat('en-GB', { timeZone: zone, timeZoneName: 'short' })
+    .formatToParts(new Date(startAt)).find((p) => p.type === 'timeZoneName');
+  return range + (zoneName ? ' ' + zoneName.value : '');
 }
 
 function renderAppointments(data) {
@@ -903,7 +924,7 @@ function renderAppointments(data) {
   const groups = [];
   let lastKey = null;
   appointments.forEach((appt) => {
-    const key = apptDayKey(appt.startAt);
+    const key = apptDayKey(appt.startAt, appt.timeZone);
     if (key !== lastKey) {
       groups.push({ key, items: [] });
       lastKey = key;
@@ -916,7 +937,7 @@ function renderAppointments(data) {
     const rowsHtml = group.items.map((appt) => {
       const contactBits = [appt.customerPhone, appt.customerEmail].filter(Boolean).map(escapeAttr).join(' &middot; ');
       return '<tr class="appt-row" data-id="' + appt.id + '">' +
-        '<td>' + apptTimeRange(appt.startAt, appt.endAt) + '</td>' +
+        '<td>' + apptTimeRange(appt.startAt, appt.endAt, appt.timeZone) + '</td>' +
         '<td class="wrap-cell">' + escapeAttr(appt.customerName || '—') + (contactBits ? '<div style="font-size:11.5px; color:var(--ink-soft); margin-top:2px;">' + contactBits + '</div>' : '') + '</td>' +
         '<td class="wrap-cell">' + (appt.description ? escapeAttr(appt.description) : '—') + '</td>' +
         '<td class="wrap-cell">' +
