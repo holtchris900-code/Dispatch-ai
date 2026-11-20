@@ -93,16 +93,16 @@
           <input id="demoCompanyInput" type="text" placeholder="Your plumbing company name" maxlength="60" />
           <select id="demoTradeInput">
             <option value="">Trade (optional)</option>
-            <option value="HVAC">HVAC</option>
+            <option value="Heating & gas">Heating &amp; gas</option>
             <option value="Plumbing" selected>Plumbing</option>
             <option value="Electrical">Electrical</option>
-            <option value="HVAC, plumbing & electrical">HVAC, plumbing &amp; electrical</option>
+            <option value="Plumbing, heating & electrical">Plumbing, heating &amp; electrical</option>
           </select>
           <button class="btn btn-primary" id="personalizeBtn" type="button">Try it as my business</button>
         </div>
       </div>
       <div class="demo-personalized-note" id="demoPersonalizedNote">
-        Personalized for <b id="demoPersonalizedName"></b> — <a id="changeDemoLink">use the example instead</a>
+        Personalised for <b id="demoPersonalizedName"></b> — <a id="changeDemoLink">use the example instead</a>
       </div>
 
       <div id="chatLog">
@@ -386,7 +386,7 @@ function personalizeDemo() {
   addBubble('ai', greeting);
   demoModeBanner.style.display = 'none';
 
-  demoBadgeText.textContent = `Live demo — personalized for "${name}"`;
+  demoBadgeText.textContent = `Live demo — personalised for "${name}"`;
   demoPersonalize.style.display = 'none';
   demoPersonalizedNote.style.display = 'block';
   demoPersonalizedName.textContent = name;
