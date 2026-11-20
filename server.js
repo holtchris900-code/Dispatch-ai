@@ -180,9 +180,18 @@ async function notifyFounder({ companyName, reason }) {
 // that's actually broken. Same fail-safe behaviour: if FOLLOWUP_REPLY_TO
 // isn't set, or sending the alert itself fails, this quietly does nothing
 // rather than throwing and breaking the webhook response Stripe is waiting on.
+// At most one urgent email per subject per hour: the Stripe webhook address
+// is public, so anyone could otherwise trigger a flood of these by sending
+// fake requests to it.
+const lastUrgentAlertAt = new Map();
+const URGENT_ALERT_GAP_MS = 60 * 60 * 1000;
+
 async function notifyFounderUrgent({ subject, details }) {
   const founderEmail = process.env.FOLLOWUP_REPLY_TO;
   if (!founderEmail) return;
+  const now = Date.now();
+  if (now - (lastUrgentAlertAt.get(subject) || 0) < URGENT_ALERT_GAP_MS) return;
+  lastUrgentAlertAt.set(subject, now);
   try {
     await sendEmail({
       to: founderEmail,
@@ -2472,6 +2481,13 @@ const server = http.createServer(async (req, res) => {
     if (clientApproveMatch && req.method === 'POST') {
       const clientRecord = db.getClient(clientApproveMatch[1]);
       if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+
+      // Already approved and the payment link already emailed (e.g. Approve
+      // tapped twice): don't email the customer again. Use the dashboard's
+      // payment-link buttons to resend on purpose.
+      if (clientRecord.status === 'approved' && clientRecord.customerEmailSentAt) {
+        return sendJson(res, 200, clientRecord);
+      }
 
       let updated = db.updateClient(clientApproveMatch[1], {
         status: 'approved',
