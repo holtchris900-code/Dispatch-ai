@@ -20,9 +20,10 @@ const { buildFollowUpDraftPrompt, parseFollowUpDraft } = require('./lib/followUp
 const { buildScriptSafetyCheckPrompt, parseScriptSafetyCheck } = require('./lib/scriptSafetyCheckPrompt');
 const { sendEmail } = require('./lib/emailClient');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession, createInvoiceItem, createRefund, cancelSubscriptionImmediately } = require('./lib/stripeClient');
-const { createPhoneAgent, updatePhoneAgentTools, retellWebhookToken, PHONE_AGENT_TOOLS_VERSION } = require('./lib/retellClient');
+const { createPhoneAgent, updatePhoneAgentTools, retellWebhookToken, importPhoneNumber, PHONE_AGENT_TOOLS_VERSION } = require('./lib/retellClient');
 const { provisionPhoneNumber } = require('./lib/phoneProvisioning');
-const { sendSms } = require('./lib/telnyxClient');
+const { sendSms, assignNumberToMessaging } = require('./lib/telnyxClient');
+const numberVerification = require('./lib/numberVerification');
 const googleCalendar = require('./lib/googleCalendarClient');
 
 const { parseCsv } = require('./lib/csv');
@@ -293,6 +294,136 @@ async function getClassifiedConversations(clientRecord) {
 // record: fields like googleRefreshToken, stripeCustomerId, and the login
 // tokens themselves are real credentials/internal identifiers that should
 // never leave the server, even to the one client they belong to.
+// --- Getting a client their own UK phone number --------------------------
+// See lib/numberVerification.js for why UK numbers need the business's
+// details first. advanceNumberSetup() moves one client a step forward:
+// order a number once their details are in and their AI agent exists, then
+// once Telnyx activates it, connect it to their agent and email them. Safe
+// to call often (on a timer and whenever they open their account page):
+// it does nothing if there's nothing to do, and never throws.
+const numberSetupInProgress = new Set();
+
+async function emailFounder(subject, text) {
+  const founderEmail = process.env.FOLLOWUP_REPLY_TO;
+  if (!founderEmail) return;
+  try {
+    await sendEmail({ to: founderEmail, subject, text, fromName: 'Dispatch AI' });
+  } catch (err) {
+    // Never let a notification failure affect anything else.
+  }
+}
+
+async function advanceNumberSetup(clientRecord) {
+  if (!clientRecord || clientRecord.retellPhoneNumber || !clientRecord.retellAgentId) return;
+  const setup = clientRecord.numberSetup;
+  if (!setup || !setup.requirementGroupId || setup.status === 'failed' || setup.status === 'live') return;
+  if (!numberVerification.isConfigured()) return;
+  if (numberSetupInProgress.has(clientRecord.id)) return;
+  numberSetupInProgress.add(clientRecord.id);
+  const companyName = clientRecord.intake?.companyName || 'A client';
+  try {
+    if (!setup.orderId) {
+      const order = await numberVerification.orderNumberForClient({
+        clientId: clientRecord.id,
+        requirementGroupId: setup.requirementGroupId,
+        town: setup.town,
+      });
+      db.updateClient(clientRecord.id, {
+        numberSetup: { ...setup, status: 'ordered', orderId: order.orderId, phoneNumber: order.phoneNumber, orderedAt: new Date().toISOString() },
+      });
+      return;
+    }
+
+    const status = await numberVerification.checkNumberOrder(setup.orderId);
+    if (status === 'pending') {
+      db.updateClient(clientRecord.id, { numberSetup: { ...setup, lastCheckedAt: new Date().toISOString() } });
+      return;
+    }
+    if (status === 'failed') {
+      db.updateClient(clientRecord.id, { numberSetup: { ...setup, status: 'failed', failedAt: new Date().toISOString() } });
+      await emailFounder(
+        `Dispatch AI -- phone number not approved for "${companyName}"`,
+        `Telnyx didn't approve the UK number order for ${companyName} (order ${setup.orderId}).\n\nCheck the order's messages in the Telnyx portal (Numbers > Orders) to see why -- usually a blurry or mismatched document. The client sees a note on their account page asking them to send their details again.`
+      );
+      return;
+    }
+
+    // Number is active at Telnyx: connect it to this client's own agent.
+    const imported = await importPhoneNumber({
+      phoneNumber: setup.phoneNumber,
+      agentId: clientRecord.retellAgentId,
+      nickname: companyName,
+    });
+    if (imported.demoMode) {
+      console.error(`Number ${setup.phoneNumber} is active but couldn't be connected to Retell: ${imported.message}`);
+      return;
+    }
+    await assignNumberToMessaging(setup.phoneNumber);
+    const liveNumber = imported.phoneNumber || setup.phoneNumber;
+    db.updateClient(clientRecord.id, {
+      retellPhoneNumber: liveNumber,
+      retellPhoneNumberSavedAt: new Date().toISOString(),
+      numberSetup: { ...setup, status: 'live', liveAt: new Date().toISOString() },
+    });
+    const ownerEmail = clientRecord.intake?.contactEmail;
+    if (ownerEmail) {
+      try {
+        await sendEmail({
+          to: ownerEmail,
+          subject: 'Your Dispatch AI phone number is live',
+          text: `Good news -- your business details have been approved and your AI receptionist's phone number is live:\n\n${liveNumber}\n\nTo start taking real calls, forward your usual business number to it. On the phone your customers call now, dial **21*${liveNumber}# and press call. Full steps are on your account page.\n\nGive it a test call from another phone to hear your AI answer.`,
+          fromName: 'Dispatch AI',
+        });
+      } catch (err) {
+        console.error('Number-live email failed:', err.message || err);
+      }
+    }
+    await emailFounder(`Dispatch AI -- "${companyName}" phone number is live`, `${companyName}'s number ${liveNumber} is active and connected to their AI agent.`);
+  } catch (err) {
+    console.error(`Phone number setup step failed for client ${clientRecord.id}:`, err.message || err);
+  } finally {
+    numberSetupInProgress.delete(clientRecord.id);
+  }
+}
+
+// Checks every client waiting on a number every 15 minutes, so numbers go
+// live even if the client doesn't open their account page.
+setInterval(() => {
+  for (const client of db.listClients()) {
+    const setup = client.numberSetup;
+    if (client.status === 'paid' && setup && (setup.status === 'submitted' || setup.status === 'ordered')) {
+      advanceNumberSetup(client);
+    }
+  }
+}, 15 * 60 * 1000).unref();
+
+// Reads a JSON body up to 15MB -- only for the verification form, which
+// carries a photo or PDF of the client's ID. Every other route keeps
+// readBody's 2MB limit.
+function readLargeJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > 15_000_000) {
+        reject(new Error('Request body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      try {
+        resolve(size ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {});
+      } catch (err) {
+        reject(new Error('Invalid JSON body'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
 function clientPortalView(clientRecord) {
   return {
     id: clientRecord.id,
@@ -315,6 +446,14 @@ function clientPortalView(clientRecord) {
     hasStripeCustomer: !!clientRecord.stripeCustomerId,
     retellAgentId: clientRecord.retellAgentId || null,
     retellPhoneNumber: clientRecord.retellPhoneNumber || null,
+    // Only the status and dates -- never the client's ID document or Telnyx ids.
+    numberSetup: clientRecord.numberSetup
+      ? {
+          status: clientRecord.numberSetup.status,
+          submittedAt: clientRecord.numberSetup.submittedAt || null,
+          failedAt: clientRecord.numberSetup.failedAt || null,
+        }
+      : null,
     googleCalendarConnectedAt: clientRecord.googleCalendarConnectedAt || null,
     googleCalendarEmail: clientRecord.googleCalendarEmail || null,
     googleCalendarNeedsReconnect: !!clientRecord.googleCalendarNeedsReconnect,
@@ -1901,6 +2040,7 @@ const server = http.createServer(async (req, res) => {
       // maybeRefreshPhoneAgentToolsInBackground above. Not awaited, so it
       // never slows down the page they're actually waiting on.
       maybeRefreshPhoneAgentToolsInBackground(clientRecord, `${url.protocol}//${url.host}`);
+      advanceNumberSetup(clientRecord);
       const conversations = await getClassifiedConversations(clientRecord);
       return sendJson(res, 200, { ...clientPortalView(clientRecord), conversations });
     }
@@ -2222,6 +2362,68 @@ const server = http.createServer(async (req, res) => {
         console.error(`Money-back guarantee refund failed for client ${clientRecord.id}:`, err.message || err);
         return sendJson(res, 500, {
           error: "Something went wrong issuing the refund. Please try again, or get in touch and we'll sort it out directly.",
+        });
+      }
+    }
+
+    // The "Get your phone number" form on the account page -- see
+    // lib/numberVerification.js. Sends the business's details to Telnyx for
+    // checking, then advanceNumberSetup() orders the number.
+    const clientPortalVerifyMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/number-verification$/);
+    if (clientPortalVerifyMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPortalToken(clientPortalVerifyMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+      if (clientRecord.status !== 'paid') {
+        return sendJson(res, 400, { error: 'You need to be on a paid plan before getting a live phone number.' });
+      }
+      if (clientRecord.retellPhoneNumber) {
+        return sendJson(res, 400, { error: 'You already have a live number.' });
+      }
+      const existing = clientRecord.numberSetup;
+      if (existing && existing.status !== 'failed') {
+        return sendJson(res, 400, { error: "Your details are already being checked -- we'll email you as soon as your number is live." });
+      }
+      if (!numberVerification.isConfigured()) {
+        return sendJson(res, 400, { error: "Phone numbers aren't switched on yet. Please get in touch and we'll set yours up." });
+      }
+      let details;
+      try {
+        details = await readLargeJsonBody(req);
+      } catch (err) {
+        return sendJson(res, 400, { error: 'That file is too big. Please use a photo or a PDF under 10MB.' });
+      }
+      const problem = numberVerification.validateDetails(details);
+      if (problem) return sendJson(res, 400, { error: problem });
+
+      try {
+        const { requirementGroupId, missing } = await numberVerification.submitVerification({
+          clientId: clientRecord.id,
+          details: { ...details, trade: clientRecord.intake?.trades || '' },
+        });
+        const updated = db.updateClient(clientRecord.id, {
+          numberSetup: {
+            status: 'submitted',
+            requirementGroupId,
+            town: String(details.town || '').trim(),
+            submittedAt: new Date().toISOString(),
+          },
+        });
+        if (missing.length) {
+          await emailFounder(
+            `Dispatch AI -- check "${clientRecord.intake?.companyName}" phone number details`,
+            `${clientRecord.intake?.companyName} sent their business details for a phone number, but Telnyx asked for something this app doesn't fill in automatically:\n\n- ${missing.join('\n- ')}\n\nFill it in on their requirement group (${requirementGroupId}) in the Telnyx portal: Numbers > Requirements > Requirement Groups.`
+          );
+        }
+        advanceNumberSetup(updated);
+        return sendJson(res, 200, clientPortalView(updated));
+      } catch (err) {
+        console.error(`Number verification submit failed for client ${clientRecord.id}:`, err.message || err);
+        await emailFounder(
+          `Dispatch AI -- phone number form failed for "${clientRecord.intake?.companyName}"`,
+          `Sending ${clientRecord.intake?.companyName}'s details to Telnyx failed:\n\n${err.message || err}`
+        );
+        return sendJson(res, 502, {
+          error: "Something went wrong sending your details to our phone provider. We've been notified -- please try again in a little while.",
         });
       }
     }

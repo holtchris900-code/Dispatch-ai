@@ -383,30 +383,7 @@ function renderPhone(data) {
       }
     });
   } else if (!data.retellPhoneNumber) {
-    box.innerHTML =
-      '<p class="section-hint">Your phone agent is created, but a live number hasn\'t been assigned to it yet -- this can happen if the automatic purchase hit a hiccup. Try again below.</p>' +
-      '<button class="btn btn-secondary" id="retryNumberBtn">Retry getting a number</button>' +
-      '<div id="phoneResult" style="margin-top:8px; font-size:13px; display:none;"></div>';
-    document.getElementById('retryNumberBtn').addEventListener('click', async () => {
-      const btn = document.getElementById('retryNumberBtn');
-      const resultBox = document.getElementById('phoneResult');
-      btn.disabled = true;
-      btn.textContent = 'Trying again...';
-      resultBox.style.display = 'block';
-      resultBox.textContent = 'Requesting a number...';
-      const data2 = await api('/create-phone-agent', { method: 'POST' });
-      if (data2.retellPhoneNumber) {
-        load();
-        return;
-      }
-      if (data2.error) {
-        resultBox.innerHTML = '<span style="color:#e88888;">' + escapeAttr(data2.error) + '</span>';
-      } else {
-        resultBox.innerHTML = '<span style="color:#e8b86d;">Still no number yet -- we\'ve been notified and will sort it out. Try again in a few minutes, or get in touch if it keeps happening.</span>';
-      }
-      btn.disabled = false;
-      btn.textContent = 'Retry getting a number';
-    });
+    renderNumberSetup(box, data);
   } else {
     const forwardingHtml =
       '<p class="section-hint" style="margin-top:0;">To start taking real calls, forward your existing business number to this one -- customers keep calling the number they already have, and it rings straight through to your AI.</p>' +
@@ -421,6 +398,131 @@ function renderPhone(data) {
       '</div></details>';
     box.innerHTML = '<div style="font-size:13.5px; font-weight:600; margin-bottom:8px;">📞 Live number: ' + escapeAttr(data.retellPhoneNumber) + '</div>' + forwardingHtml;
   }
+}
+
+// "Get your phone number": UK phone providers must check who each business
+// number belongs to before it can go live (Ofcom rules), so the client
+// sends their details once here. See lib/numberVerification.js.
+function renderNumberSetup(box, data) {
+  const setup = data.numberSetup;
+  if (setup && (setup.status === 'submitted' || setup.status === 'ordered')) {
+    box.innerHTML =
+      '<div style="font-size:13.5px; font-weight:600; margin-bottom:6px;">📞 Your number is on its way</div>' +
+      '<p class="section-hint" style="margin:0;">Thanks -- your business details are with our phone provider for checking. This usually takes up to 1 working day. We\'ll email you as soon as your number is live, and it will appear here.</p>';
+    return;
+  }
+  const failedNote = setup && setup.status === 'failed'
+    ? '<div style="font-size:13px; color:#e88888; margin-bottom:10px;">Our phone provider couldn\'t approve your details last time -- usually because the photo was blurry or the name or address didn\'t match. Please check them and send them again.</div>'
+    : '';
+  const field = (id, label, attrs) =>
+    '<label for="' + id + '" style="display:block; font-size:12.5px; color:var(--ink-soft); margin:10px 0 4px;">' + label + '</label>' +
+    '<input id="' + id + '" ' + (attrs || '') + ' style="width:100%; box-sizing:border-box; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:var(--paper); color:var(--ink); font-size:15px;" />';
+  box.innerHTML =
+    failedNote +
+    '<div style="font-size:13.5px; font-weight:600; margin-bottom:6px;">Get your phone number</div>' +
+    '<p class="section-hint" style="margin-top:0;">UK rules mean our phone provider has to check who each business number belongs to before it can go live. Fill this in once -- it\'s usually approved within 1 working day, and we\'ll email you when your number is ready.</p>' +
+    field('nvBusiness', 'Business name (as customers know it)', 'value="' + escapeAttr(data.companyName || '') + '" autocomplete="organization"') +
+    field('nvFirst', 'Your first name (as on your ID)', 'autocomplete="given-name"') +
+    field('nvLast', 'Your last name (as on your ID)', 'autocomplete="family-name"') +
+    field('nvEmail', 'Email', 'type="email" value="' + escapeAttr(data.contactEmail || '') + '" autocomplete="email"') +
+    field('nvPhone', 'Mobile number', 'type="tel" placeholder="07..." autocomplete="tel"') +
+    field('nvStreet', 'Business address (street and number)', 'autocomplete="address-line1"') +
+    field('nvLine2', 'Address line 2 (optional)', 'autocomplete="address-line2"') +
+    field('nvTown', 'Town or city', 'autocomplete="address-level2"') +
+    field('nvPostcode', 'Postcode', 'autocomplete="postal-code" autocapitalize="characters"') +
+    field('nvWebsite', 'Your business online (website, Facebook page or Checkatrade profile)', 'type="url" placeholder="https://"') +
+    '<label for="nvDoc" style="display:block; font-size:12.5px; color:var(--ink-soft); margin:10px 0 4px;">Photo of your passport or driving licence, or your Companies House certificate if you\'re a limited company</label>' +
+    '<input id="nvDoc" type="file" accept="image/*,application/pdf" style="font-size:14px; color:var(--ink);" />' +
+    '<p class="section-hint" style="margin:6px 0 0;">Make sure every word is readable. Your document goes straight to our phone provider for this check only -- we don\'t keep a copy.</p>' +
+    '<button class="btn btn-primary" id="nvSubmit" style="margin-top:14px;">Send my details</button>' +
+    '<div id="nvResult" style="margin-top:8px; font-size:13px; display:none;"></div>';
+
+  document.getElementById('nvSubmit').addEventListener('click', async () => {
+    const btn = document.getElementById('nvSubmit');
+    const resultBox = document.getElementById('nvResult');
+    const value = (id) => document.getElementById(id).value.trim();
+    const showError = (msg) => {
+      resultBox.style.display = 'block';
+      resultBox.innerHTML = '<span style="color:#e88888;">' + escapeAttr(msg) + '</span>';
+    };
+    let website = value('nvWebsite');
+    if (website && !/^https?:\/\//i.test(website)) website = 'https://' + website;
+    const file = document.getElementById('nvDoc').files[0];
+    if (!file) return showError('Please add a photo of your ID or your Companies House certificate.');
+
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    resultBox.style.display = 'block';
+    resultBox.textContent = 'Sending your details -- this can take up to a minute.';
+    let document64;
+    let filename = file.name || 'id-document';
+    try {
+      if (file.type && file.type.indexOf('image/') === 0) {
+        document64 = await shrinkImage(file);
+        filename = filename.replace(/\.[^.]+$/, '') + '.jpg';
+      } else {
+        if (file.size > 10 * 1024 * 1024) throw new Error('That file is too big. Please use a PDF under 10MB, or a photo.');
+        document64 = await readAsDataUrl(file);
+      }
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Send my details';
+      return showError(err.message || 'Could not read that file. Please try a different photo.');
+    }
+
+    const result = await fetch('/api/client-portal/' + token + '/number-verification', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        businessName: value('nvBusiness'),
+        firstName: value('nvFirst'),
+        lastName: value('nvLast'),
+        email: value('nvEmail'),
+        phone: value('nvPhone'),
+        streetAddress: value('nvStreet'),
+        addressLine2: value('nvLine2'),
+        town: value('nvTown'),
+        postcode: value('nvPostcode'),
+        website: website,
+        documentBase64: document64,
+        documentFilename: filename,
+      }),
+    }).then((r) => r.json()).catch(() => ({ error: 'Could not reach the server. Please check your connection and try again.' }));
+
+    if (result.error) {
+      btn.disabled = false;
+      btn.textContent = 'Send my details';
+      return showError(result.error);
+    }
+    load();
+  });
+}
+
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read that file. Please try again.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Phone photos are often 3-8MB -- shrink to a clear but smaller JPEG
+// (longest side 2000px) so it uploads quickly on mobile data.
+async function shrinkImage(file) {
+  const dataUrl = await readAsDataUrl(file);
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = () => reject(new Error('Could not read that photo. Please try a different one, or take a new photo.'));
+    i.src = dataUrl;
+  });
+  const scale = Math.min(1, 2000 / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.85);
 }
 
 function renderCalendar(data) {
