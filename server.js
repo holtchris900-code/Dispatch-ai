@@ -180,9 +180,18 @@ async function notifyFounder({ companyName, reason }) {
 // that's actually broken. Same fail-safe behaviour: if FOLLOWUP_REPLY_TO
 // isn't set, or sending the alert itself fails, this quietly does nothing
 // rather than throwing and breaking the webhook response Stripe is waiting on.
+// At most one urgent email per subject per hour: the Stripe webhook address
+// is public, so anyone could otherwise trigger a flood of these by sending
+// fake requests to it.
+const lastUrgentAlertAt = new Map();
+const URGENT_ALERT_GAP_MS = 60 * 60 * 1000;
+
 async function notifyFounderUrgent({ subject, details }) {
   const founderEmail = process.env.FOLLOWUP_REPLY_TO;
   if (!founderEmail) return;
+  const now = Date.now();
+  if (now - (lastUrgentAlertAt.get(subject) || 0) < URGENT_ALERT_GAP_MS) return;
+  lastUrgentAlertAt.set(subject, now);
   try {
     await sendEmail({
       to: founderEmail,
@@ -432,6 +441,39 @@ const MISSED_CALL_DISCONNECT_REASONS = new Set([
   'error_asr', 'error_retell', 'error_unknown', 'error_user_not_joined',
   'registered_call_timeout',
 ]);
+
+// Reads a finished call's transcript and fills in the caller's details on
+// the placeholder job made for that call -- used when the AI took the
+// details down in conversation but didn't save them itself. Only fills
+// blanks, so it never overwrites anything already on the job.
+async function fillJobFromTranscript(jobId, transcript) {
+  const text = String(transcript || '').slice(0, 12000);
+  if (!text.trim() || !process.env.ANTHROPIC_API_KEY) return;
+  const result = await callClaude({
+    system:
+      'You read phone call transcripts between an AI receptionist for a UK trades business and a caller, and pull out the job request. Reply with ONLY a JSON object with these keys: customerName, customerPhone, customerEmail, jobDescription, preferredTime. Use an empty string for anything the caller did not give. Write phone numbers as digits (e.g. "o seven seven..." becomes 077...), and emails in normal form (e.g. "john at gmail dot com" becomes john@gmail.com). jobDescription is one short sentence in plain English, and should say if the caller called it urgent. If the call has no real job request (a wrong number, a quick question), set jobDescription to a short note of what the call was about.',
+    messages: [{ role: 'user', content: text }],
+    maxTokens: 300,
+  });
+  if (result.demoMode) return;
+  const match = String(result.text || '').match(/\{[\s\S]*\}/);
+  if (!match) return;
+  let found;
+  try {
+    found = JSON.parse(match[0]);
+  } catch (err) {
+    return;
+  }
+  const updates = {};
+  for (const key of ['customerName', 'customerPhone', 'customerEmail', 'preferredTime']) {
+    const value = typeof found[key] === 'string' ? found[key].trim() : '';
+    if (value) updates[key] = value;
+  }
+  const description = typeof found.jobDescription === 'string' ? found.jobDescription.trim() : '';
+  if (description) updates.jobDescription = description;
+  if (!Object.keys(updates).length) return;
+  db.updateJobBlanks(jobId, updates);
+}
 
 
 async function recordUsageMinutes(clientRecord, minutes) {
@@ -751,7 +793,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
   if (!googleCalendar.isConfigured() || !clientRecord.googleRefreshToken) {
     return {
       connected: false,
-      note: "Live calendar booking isn't connected for this business yet. Collect the customer's preferred date/time and contact info, and tell them a team member will confirm it -- do not say the appointment is booked.",
+      note: "Live calendar booking isn't connected for this business yet. Call log_job_request now with the customer's name, phone number or email, what they need and when they'd like it (if you haven't already), then tell them a team member will confirm the time -- do not say the appointment is booked.",
     };
   }
 
@@ -900,7 +942,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
     if (err.message === 'not_connected') {
       return {
         connected: false,
-        note: "Live calendar booking isn't connected for this business yet. Collect the customer's preferred date/time and contact info, and tell them a team member will confirm it.",
+        note: "Live calendar booking isn't connected for this business yet. Call log_job_request now with the customer's name, phone number or email, what they need and when they'd like it (if you haven't already), then tell them a team member will confirm the time.",
       };
     }
     // Covers an expired/revoked refresh token, a Google outage, or anything
@@ -913,7 +955,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
     return {
       connected: true,
       error: true,
-      note: "Something went wrong reaching the calendar just now. Collect the customer's preferred date/time and contact info, and tell them a team member will confirm it shortly.",
+      note: "Something went wrong reaching the calendar just now. Call log_job_request now with the customer's name, phone number or email, what they need and when they'd like it (if you haven't already), then tell them a team member will confirm the time shortly.",
     };
   }
 }
@@ -2473,6 +2515,13 @@ const server = http.createServer(async (req, res) => {
       const clientRecord = db.getClient(clientApproveMatch[1]);
       if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
 
+      // Already approved and the payment link already emailed (e.g. Approve
+      // tapped twice): don't email the customer again. Use the dashboard's
+      // payment-link buttons to resend on purpose.
+      if (clientRecord.status === 'approved' && clientRecord.customerEmailSentAt) {
+        return sendJson(res, 200, clientRecord);
+      }
+
       let updated = db.updateClient(clientApproveMatch[1], {
         status: 'approved',
         approvedAt: new Date().toISOString(),
@@ -3284,7 +3333,7 @@ const server = http.createServer(async (req, res) => {
           const jobAlreadyLoggedThisCall =
             jobCallStartIso && db.listJobsForClient(clientRecord.id).some((j) => j.createdAt >= jobCallStartIso);
           if (!jobAlreadyLoggedThisCall) {
-            db.addJob({
+            const placeholderJob = db.addJob({
               clientId: clientRecord.id,
               source: 'phone call',
               customerPhone: call.from_number || '',
@@ -3292,6 +3341,15 @@ const server = http.createServer(async (req, res) => {
                 ? '(Missed call -- no job captured)'
                 : '(Call answered -- no further details captured)',
             });
+            // Backup for when the AI collected the caller's details but
+            // never saved them mid-call: read the call transcript and fill
+            // the job in from that. Runs in the background so Retell gets
+            // its reply straight away, and never throws.
+            if (!MISSED_CALL_DISCONNECT_REASONS.has(call.disconnection_reason) && call.transcript) {
+              fillJobFromTranscript(placeholderJob.id, call.transcript).catch((err) =>
+                console.error('Filling job from call transcript failed:', err.message || err)
+              );
+            }
           }
         }
 
