@@ -686,7 +686,7 @@ BOOKING_TOOLS.push({
   },
 });
 
-async function executeBookingTool(name, input, clientRecord, source = 'website chat widget') {
+async function executeBookingTool(name, input, clientRecord, source = 'website chat widget', callId = null) {
   const timeZone = clientRecord.intake?.timeZone || 'Europe/London';
   const durationMinutes =
     Number(input.durationMinutes) || Number(clientRecord.intake?.appointmentLengthMinutes) || 60;
@@ -768,9 +768,25 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
     // client whether or not they've connected a calendar yet. Never throws:
     // a live call or chat must never break just because this failed to save.
     try {
+      // On a phone call the AI calls this again if the caller corrects a
+      // detail (e.g. a misheard email) -- update the job already saved for
+      // this call instead of adding a second one.
+      const existing = callId
+        ? db.listJobsForClient(clientRecord.id).find((j) => j.callId === callId)
+        : null;
+      if (existing) {
+        const fields = ['customerName', 'customerPhone', 'customerEmail', 'jobDescription', 'preferredTime'];
+        const updates = {};
+        for (const key of fields) {
+          if (typeof input[key] === 'string' && input[key].trim()) updates[key] = input[key].trim();
+        }
+        db.updateJob(existing.id, updates);
+        return { logged: true, updated: true };
+      }
       db.addJob({
         clientId: clientRecord.id,
         source,
+        callId,
         customerName: input.customerName,
         customerPhone: input.customerPhone,
         customerEmail: input.customerEmail,
@@ -3486,7 +3502,7 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      const result = await executeBookingTool(payload.name, payload.args || {}, clientRecord, 'phone call');
+      const result = await executeBookingTool(payload.name, payload.args || {}, clientRecord, 'phone call', payload.call?.call_id || null);
       return sendJson(res, 200, result);
     }
 
