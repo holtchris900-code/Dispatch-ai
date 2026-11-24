@@ -38,11 +38,11 @@
 </div>
 
 <script>
-// Mirrors PLAN_MINUTES in server.js -- only Starter and Growth have a
+// Mirrors PLAN_MINUTES in lib/plans.js -- only Solo, Starter and Growth have a
 // defined monthly minute allowance, so a client without one of these two
 // plan values (e.g. still unset, or the custom-quoted Multi-Location tier)
 // just doesn't get a usage section at all.
-const PLAN_MINUTES = { starter: 250, growth: 750 };
+const PLAN_MINUTES = { solo: 150, starter: 400, growth: 1000 };
 
 // Used when embedding a client's own company name inside an HTML attribute
 // (the widget embed snippet) so quotes/special characters in their name
@@ -200,7 +200,7 @@ async function loadClients() {
 
     let billingHtml = '';
     if (client.status === 'paid') {
-      const planLabel = client.plan === 'growth' ? 'Growth' : client.plan === 'starter' ? 'Starter' : 'plan unknown';
+      const planLabel = ({ solo: 'Solo', starter: 'Starter', growth: 'Growth' })[client.plan] || 'plan unknown';
       const companyName = client.intake?.companyName || '';
       const widgetSnippet = `<script src="${window.location.origin}/widget.js" data-client-id="${client.id}" data-company-name="${escapeAttr(companyName)}" data-label="Chat with us"><` + `/script>`;
 

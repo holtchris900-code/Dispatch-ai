@@ -188,7 +188,8 @@ h1 .accent { color: var(--accent); font-style: italic; }
 .feature-card p { font-size: 13.5px; color: var(--ink-soft); margin: 0; }
 
 /* Pricing */
-.pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; align-items: stretch; }
+.pricing-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; align-items: stretch; }
+@media (max-width: 1100px) { .pricing-grid { grid-template-columns: repeat(2, 1fr); } }
 .price-card {
   position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
   padding: 30px 26px; display: flex; flex-direction: column;

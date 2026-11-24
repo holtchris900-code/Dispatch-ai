@@ -429,6 +429,8 @@ function clientPortalView(clientRecord) {
     id: clientRecord.id,
     status: clientRecord.status,
     plan: clientRecord.plan || null,
+    planIncludesCalendar: planAllows(clientRecord.plan, 'calendarBooking'),
+    planIncludesWebsiteChat: planAllows(clientRecord.plan, 'websiteChat'),
     companyName: clientRecord.intake?.companyName || '',
     contactEmail: clientRecord.intake?.contactEmail || '',
     script: clientRecord.script || '',
@@ -543,7 +545,7 @@ async function draftDueOutreach(clientRecord, pastCustomers) {
 // Multi-Location, since that tier is custom-quoted rather than self-serve
 // checkout and so never actually gets `client.plan` set to anything here.
 const CHAT_MINUTES_PER_MESSAGE = 2;
-const PLAN_MINUTES = { starter: 250, growth: 750 };
+const { PLANS, normalizePlan, priceIdFor, planAllows, PLAN_MINUTES, PLAN_OVERAGE_RATE_GBP } = require('./lib/plans');
 // Free-trial length offered on a client's first-ever checkout (see
 // FREE_TRIAL_DAYS usage below) -- matches what OnCrew, Rosie, and Ringly
 // all lead with. Only applied when a client has never had a paid
@@ -556,10 +558,7 @@ const FREE_TRIAL_DAYS = 14;
 // firstChargeAt (set below, in the invoice.paid webhook handler), not from
 // checkout/signup, which can be up to FREE_TRIAL_DAYS earlier.
 const MONEY_BACK_GUARANTEE_DAYS = 30;
-// Matches the Â£0.30-0.35/minute range already promised in the pricing
-// page's footnote -- Growth gets the better per-minute rate, consistent
-// with it already being the better per-minute deal on its base price too.
-const PLAN_OVERAGE_RATE_GBP = { starter: 0.35, growth: 0.3 };
+// Overage rates per plan live in lib/plans.js (PLAN_OVERAGE_RATE_GBP).
 const USAGE_WARNING_THRESHOLD = 0.8;
 // Disconnection reasons that mean the call genuinely never got through to
 // a conversation with the AI -- Retell's documented "not connected" and
@@ -631,7 +630,7 @@ async function recordUsageMinutes(clientRecord, minutes) {
     clientRecord = db.updateClient(clientRecord.id, { usageMinutesThisPeriod: newTotal });
 
     const companyName = clientRecord.intake?.companyName || 'your business';
-    const planLabel = plan === 'growth' ? 'Growth' : 'Starter';
+    const planLabel = PLANS[plan] ? PLANS[plan].label : 'Starter';
     const contactEmail = clientRecord.intake?.contactEmail;
     const rate = PLAN_OVERAGE_RATE_GBP[plan];
 
@@ -640,7 +639,7 @@ async function recordUsageMinutes(clientRecord, minutes) {
       const result = await sendEmail({
         to: contactEmail,
         subject: `${companyName} -- approaching your monthly minute limit`,
-        text: `Hi,\n\nYour Dispatch AI ${planLabel} plan includes ${includedMinutes} call & chat minutes each month. You've used about ${newTotal} of those so far this billing period.\n\nIf you go over, extra minutes are billed automatically at Â£${rate.toFixed(2)}/minute (the same rate on our pricing page) -- no action needed from you, and your AI agent keeps answering calls and chats without any interruption either way.\n\nWant more minutes included instead? Just reply to this email any time to talk about moving to a higher plan.\n\n-- Dispatch AI`,
+        text: `Hi,\n\nYour Dispatch AI ${planLabel} plan includes ${includedMinutes} call & chat minutes each month. You've used about ${newTotal} of those so far this billing period.\n\nIf you go over, extra minutes are billed automatically at £${rate.toFixed(2)}/minute (the same rate on our pricing page) -- no action needed from you, and your AI agent keeps answering calls and chats without any interruption either way.\n\nWant more minutes included instead? Just reply to this email any time to talk about moving to a higher plan.\n\n-- Dispatch AI`,
         fromName: 'Dispatch AI',
       });
       if (!result.demoMode) {
@@ -654,7 +653,7 @@ async function recordUsageMinutes(clientRecord, minutes) {
         const result = await sendEmail({
           to: contactEmail,
           subject: `${companyName} -- you've reached your monthly minute limit`,
-          text: `Hi,\n\nYour Dispatch AI ${planLabel} plan's ${includedMinutes} monthly call & chat minutes have now been used for this billing period. Your AI agent keeps working exactly as before -- calls and chats are never interrupted -- but minutes beyond your plan are now billed automatically at Â£${rate.toFixed(2)}/minute, and will appear as a separate line item on your next invoice.\n\nWant more minutes included instead? Just reply to this email any time to talk about moving to a higher plan.\n\n-- Dispatch AI`,
+          text: `Hi,\n\nYour Dispatch AI ${planLabel} plan's ${includedMinutes} monthly call & chat minutes have now been used for this billing period. Your AI agent keeps working exactly as before -- calls and chats are never interrupted -- but minutes beyond your plan are now billed automatically at £${rate.toFixed(2)}/minute, and will appear as a separate line item on your next invoice.\n\nWant more minutes included instead? Just reply to this email any time to talk about moving to a higher plan.\n\n-- Dispatch AI`,
           fromName: 'Dispatch AI',
         });
         if (!result.demoMode) {
@@ -945,6 +944,14 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
   }
 
 
+  // Solo plan: no calendar booking -- the AI takes the details instead.
+  if (!planAllows(clientRecord.plan, 'calendarBooking')) {
+    return {
+      connected: false,
+      note: "Live calendar booking isn't part of this business's plan. Call log_job_request now with the customer's name, phone number or email, what they need and when they'd like it (if you haven't already), then tell them a team member will confirm the time -- do not say the appointment is booked.",
+    };
+  }
+
   if (!googleCalendar.isConfigured() || !clientRecord.googleRefreshToken) {
     return {
       connected: false,
@@ -1204,7 +1211,7 @@ const CLIENT_LOGIN_TOKEN_TTL_MS = 15 * 60 * 1000;
 function renderHostedSitePage(clientRecord) {
   const intake = clientRecord.intake || {};
   const companyName = escapeHtml(intake.companyName || 'Our business');
-  const tagline = [intake.trades, intake.serviceArea].filter(Boolean).map(escapeHtml).join(' Â· ');
+  const tagline = [intake.trades, intake.serviceArea].filter(Boolean).map(escapeHtml).join(' · ');
   const hours = intake.hours ? escapeHtml(intake.hours) : null;
   const phone = clientRecord.retellPhoneNumber ? escapeHtml(clientRecord.retellPhoneNumber) : null;
   const clientIdJson = JSON.stringify(clientRecord.id);
@@ -1617,6 +1624,13 @@ const server = http.createServer(async (req, res) => {
       if (!clientRecord || clientRecord.status !== 'paid') {
         return sendJson(res, 200, {
           text: "Sorry, chat isn't available right now -- please call or check back later.",
+          unavailable: true,
+        }, WIDGET_CORS_HEADERS);
+      }
+
+      if (!planAllows(clientRecord.plan, 'websiteChat')) {
+        return sendJson(res, 200, {
+          text: "Sorry, chat isn't available here -- please give us a call instead.",
           unavailable: true,
         }, WIDGET_CORS_HEADERS);
       }
@@ -2260,7 +2274,7 @@ const server = http.createServer(async (req, res) => {
       if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
 
             const { plan } = await readBody(req);
-      const priceId = plan === 'growth' ? process.env.STRIPE_PRICE_ID_GROWTH : process.env.STRIPE_PRICE_ID_STARTER;
+      const priceId = priceIdFor(plan);
       const baseUrl = `${url.protocol}//${url.host}`;
       const result = await createCheckoutSession({
         clientId: clientRecord.id,
@@ -2275,7 +2289,7 @@ const server = http.createServer(async (req, res) => {
       });
 
 
-      const normalizedPlan = plan === 'growth' ? 'growth' : 'starter';
+      const normalizedPlan = normalizePlan(plan);
       if (!result.demoMode) {
         db.updateClient(clientRecord.id, { pendingPlan: normalizedPlan });
       }
@@ -2758,7 +2772,7 @@ const server = http.createServer(async (req, res) => {
         const baseUrl = `${url.protocol}//${url.host}`;
         const checkout = await createCheckoutSession({
           clientId: clientRecord.id,
-         priceId: clientRecord.intake?.plan === 'growth' ? process.env.STRIPE_PRICE_ID_GROWTH : process.env.STRIPE_PRICE_ID_STARTER,
+         priceId: priceIdFor(clientRecord.intake?.plan),
           companyName: clientRecord.intake?.companyName,
           trialDays: clientRecord.paidAt ? 0 : FREE_TRIAL_DAYS,
           successUrl: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -2766,7 +2780,7 @@ const server = http.createServer(async (req, res) => {
         });
 
         if (!checkout.demoMode) {
-         db.updateClient(clientRecord.id, { pendingPlan: clientRecord.intake?.plan === 'growth' ? 'growth' : 'starter' });
+         db.updateClient(clientRecord.id, { pendingPlan: normalizePlan(clientRecord.intake?.plan) });
           const emailResult = await sendEmail({
             to: clientRecord.intake.contactEmail,
             subject: `${clientRecord.intake?.companyName || 'Your business'} -- your AI agent is ready to go live`,
@@ -2797,8 +2811,7 @@ const server = http.createServer(async (req, res) => {
       const clientRecord = db.getClient(clientCheckoutMatch[1]);
       if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
 
-      const priceId =
-        plan === 'growth' ? process.env.STRIPE_PRICE_ID_GROWTH : process.env.STRIPE_PRICE_ID_STARTER;
+      const priceId = priceIdFor(plan);
       const baseUrl = `${url.protocol}//${url.host}`;
 
             const result = await createCheckoutSession({
@@ -2816,7 +2829,7 @@ const server = http.createServer(async (req, res) => {
       });
 
 
-      const normalizedPlan = plan === 'growth' ? 'growth' : 'starter';
+      const normalizedPlan = normalizePlan(plan);
       if (!result.demoMode) {
         db.updateClient(clientRecord.id, { pendingPlan: normalizedPlan });
       }

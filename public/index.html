@@ -224,8 +224,9 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .billing-toggle-btn { background: transparent; border: none; color: var(--muted); font-size: 12.5px; font-weight: 600; padding: 7px 14px; border-radius: 7px; cursor: pointer; font-family: inherit; }
 .billing-toggle-btn.active { background: var(--accent); color: #1a1104; }
 .billing-save-badge { font-size: 10.5px; margin-left: 4px; opacity: 0.85; }
-.pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-@media (max-width: 860px) { .pricing-grid { grid-template-columns: 1fr; } }
+.pricing-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 1100px) { .pricing-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) { .pricing-grid { grid-template-columns: 1fr; } }
 .price-card { position: relative; background: var(--surface); border: 1px solid var(--surface-line); border-radius: 16px; padding: 24px 20px; display: flex; flex-direction: column; }
 .price-card.featured { border-color: var(--accent-dim); box-shadow: 0 0 0 1px var(--accent-dim), 0 16px 40px -20px var(--accent-soft); }
 .price-badge { position: absolute; top: -11px; left: 20px; background: var(--accent); color: #1a1104; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
@@ -446,22 +447,38 @@ footer .trade-links a { color: var(--accent); text-decoration: none; }
       <h2>Built for one-location home service businesses</h2>
       <p>No enterprise sales calls, no seat minimums. Billed monthly in GBP, cancel anytime.</p>
     </div>
-    <p class="price-anchor">Flat monthly rate, not per-minute billing — your price is the same whether a call lasts 30 seconds or 10 minutes. A part-time receptionist typically costs £1,500+/month; Dispatch AI starts at £119/month for round-the-clock coverage.</p>
+    <p class="price-anchor">Every plan includes a monthly allowance of call minutes, and extra minutes are just 25p — calls are never cut off. A part-time receptionist typically costs £1,500+/month; Dispatch AI starts at £49/month for round-the-clock cover.</p>
     <p class="trial-note">Every plan starts with a <b style="color:var(--fg);">14-day free trial</b> — you're not charged until it ends, and you can cancel any time before that with nothing owed.</p>
     <div class="billing-toggle" id="billingToggle" style="display:none;">
       <button class="billing-toggle-btn active" id="billingMonthlyBtn" type="button">Monthly</button>
       <button class="billing-toggle-btn" id="billingAnnualBtn" type="button">Annual <span class="billing-save-badge">Save 15%</span></button>
     </div>
     <div class="pricing-grid">
-      <div class="price-card reveal">
+      <div class="price-card reveal" data-plan="solo">
+        <h3>Solo</h3>
+        <p class="price-desc">For sole traders who just need every call answered and the details sent to them.</p>
+        <div class="price-amount"><span class="amount">£49</span><span class="period">/ month</span></div>
+        <p class="price-note">≈ 30 typical calls a month, assuming about 5 minutes each</p>
+        <ul class="price-features">
+          <li><span class="check">✓</span> 150 call minutes / month</li>
+          <li><span class="check">✓</span> Answers every call, 24/7</li>
+          <li><span class="check">✓</span> Takes the job details and logs every job</li>
+          <li><span class="check">✓</span> Urgent calls flagged to you straight away</li>
+          <li><span class="check">✓</span> Missed-call text-back</li>
+        </ul>
+        <a class="btn btn-secondary btn-block" href="/onboard">Start free trial</a>
+      </div>
+
+      <div class="price-card reveal" data-plan="starter">
         <h3>Starter</h3>
         <p class="price-desc">For a single line that just needs to stop missing calls.</p>
         <div class="price-amount"><span class="amount">£119</span><span class="period">/ month</span></div>
-        <p class="price-note">≈ 50 typical calls a month, assuming about 5 minutes each</p>
+        <p class="price-note">≈ 80 typical calls a month, assuming about 5 minutes each</p>
         <ul class="price-features">
-          <li><span class="check">✓</span> 250 call &amp; chat minutes / month</li>
+          <li><span class="check">✓</span> 400 call &amp; chat minutes / month</li>
           <li><span class="check">✓</span> One phone line + website chat</li>
-          <li><span class="check">✓</span> Standard booking &amp; FAQ script</li>
+          <li><span class="check">✓</span> Books jobs straight into your calendar</li>
+          <li><span class="check">✓</span> Booking &amp; FAQ script</li>
           <li><span class="check">✓</span> Email support</li>
         </ul>
         <a class="btn btn-secondary btn-block" href="/onboard">Start free trial</a>
@@ -472,9 +489,9 @@ footer .trade-links a { color: var(--accent); text-decoration: none; }
         <h3>Growth</h3>
         <p class="price-desc">The right fit for most single-location plumbing, heating &amp; electrical businesses.</p>
         <div class="price-amount"><span class="amount">£229</span><span class="period">/ month</span></div>
-        <p class="price-note">≈ 150 typical calls a month, assuming about 5 minutes each</p>
+        <p class="price-note">≈ 200 typical calls a month, assuming about 5 minutes each</p>
         <ul class="price-features">
-          <li><span class="check">✓</span> 750 call &amp; chat minutes / month</li>
+          <li><span class="check">✓</span> 1,000 call &amp; chat minutes / month</li>
           <li><span class="check">✓</span> Everything in Starter</li>
           <li><span class="check">✓</span> Emergency call routing &amp; priority flagging</li>
           <li><span class="check">✓</span> Scheduling software integration</li>
@@ -500,7 +517,7 @@ footer .trade-links a { color: var(--accent); text-decoration: none; }
       <span class="guarantee-icon">🛡️</span>
       <p><b>Try it free for 14 days.</b> If Dispatch AI isn't pulling its weight within your first 30 days of your first payment, tell us and we'll refund you in full — no questions asked.</p>
     </div>
-    <p class="pricing-footnote">Overage minutes beyond your plan's allowance are billed at £0.30–£0.35/minute. No long-term contracts — cancel your subscription any time and billing stops immediately.</p>
+    <p class="pricing-footnote">Extra minutes beyond your plan's allowance are 25p/minute on every plan. No long-term contracts — cancel your subscription any time and billing stops immediately.</p>
   </section>
 
   <section>
@@ -515,7 +532,7 @@ footer .trade-links a { color: var(--accent); text-decoration: none; }
       </details>
       <details class="faq-item">
         <summary>What happens if we go over our plan's minutes?</summary>
-        <p>Nothing changes for the customer on the phone — calls and chats are never cut off or slowed down. Extra minutes beyond your plan are simply billed automatically at £0.30–£0.35/minute and added to your next invoice.</p>
+        <p>Nothing changes for the customer on the phone — calls and chats are never cut off or slowed down. Extra minutes beyond your plan are simply billed automatically at 25p/minute and added to your next invoice.</p>
       </details>
       <details class="faq-item">
         <summary>Will it sound robotic, or will customers know it's AI?</summary>
@@ -727,7 +744,7 @@ updateCalculator();
 // --- Pricing billing toggle (unchanged logic, real numbers) ---------------
 const billingMonthlyBtn = document.getElementById('billingMonthlyBtn');
 const billingAnnualBtn = document.getElementById('billingAnnualBtn');
-const starterCard = document.querySelector('.pricing-grid .price-card:nth-child(1)');
+const starterCard = document.querySelector('.pricing-grid .price-card[data-plan="starter"]');
 const growthCard = document.querySelector('.pricing-grid .price-card.featured');
 const starterPriceEl = starterCard.querySelector('.amount');
 const starterPeriodEl = starterCard.querySelector('.period');
