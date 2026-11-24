@@ -192,6 +192,7 @@ async function loadClients() {
 
     const paymentLinkButtons = `
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-secondary checkout-btn" data-id="${client.id}" data-plan="solo">Get Solo link</button>
         <button class="btn btn-secondary checkout-btn" data-id="${client.id}" data-plan="starter">Get Starter link</button>
         <button class="btn btn-secondary checkout-btn" data-id="${client.id}" data-plan="growth">Get Growth link</button>
       </div>
