@@ -2396,7 +2396,7 @@ const server = http.createServer(async (req, res) => {
       if (problem) return sendJson(res, 400, { error: problem });
 
       try {
-        const { requirementGroupId, missing } = await numberVerification.submitVerification({
+        const { requirementGroupId, missing, submitError } = await numberVerification.submitVerification({
           clientId: clientRecord.id,
           details: { ...details, trade: clientRecord.intake?.trades || '' },
         });
@@ -2408,10 +2408,15 @@ const server = http.createServer(async (req, res) => {
             submittedAt: new Date().toISOString(),
           },
         });
-        if (missing.length) {
+        if (missing.length || submitError) {
+          const parts = [];
+          if (missing.length) {
+            parts.push(`Telnyx asked for something this app didn't fill in automatically:\n\n- ${missing.join('\n- ')}`);
+          }
+          if (submitError) parts.push(`Submitting the details for approval failed:\n\n${submitError}`);
           await emailFounder(
             `Dispatch AI -- check "${clientRecord.intake?.companyName}" phone number details`,
-            `${clientRecord.intake?.companyName} sent their business details for a phone number, but Telnyx asked for something this app doesn't fill in automatically:\n\n- ${missing.join('\n- ')}\n\nFill it in on their requirement group (${requirementGroupId}) in the Telnyx portal: Numbers > Requirements > Requirement Groups.`
+            `${clientRecord.intake?.companyName} sent their business details for a phone number.\n\n${parts.join('\n\n')}\n\nFix it on their requirement group (${requirementGroupId}) in the Telnyx portal: Numbers > Compliance > Requirement Groups, then tap Submit for Pre-approval. Their number order will go ahead once it's approved.`
           );
         }
         advanceNumberSetup(updated);

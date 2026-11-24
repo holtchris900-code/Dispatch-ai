@@ -431,9 +431,11 @@ function renderNumberSetup(box, data) {
     field('nvTown', 'Town or city', 'autocomplete="address-level2"') +
     field('nvPostcode', 'Postcode', 'autocomplete="postal-code" autocapitalize="characters"') +
     field('nvWebsite', 'Your business online (website, Facebook page or Checkatrade profile)', 'type="url" placeholder="https://"') +
-    '<label for="nvDoc" style="display:block; font-size:12.5px; color:var(--ink-soft); margin:10px 0 4px;">Photo of your passport or driving licence, or your Companies House certificate if you\'re a limited company</label>' +
+    '<label for="nvDoc" style="display:block; font-size:12.5px; color:var(--ink-soft); margin:10px 0 4px;">ID: a photo of your passport or driving licence (or your Companies House certificate if you\'re a limited company)</label>' +
     '<input id="nvDoc" type="file" accept="image/*,application/pdf" style="font-size:14px; color:var(--ink);" />' +
-    '<p class="section-hint" style="margin:6px 0 0;">Make sure every word is readable. Your document goes straight to our phone provider for this check only -- we don\'t keep a copy.</p>' +
+    '<label for="nvProof" style="display:block; font-size:12.5px; color:var(--ink-soft); margin:12px 0 4px;">Proof of address: a bill or bank statement from the last 3 months showing your name and address. Skip this if you used your driving licence above.</label>' +
+    '<input id="nvProof" type="file" accept="image/*,application/pdf" style="font-size:14px; color:var(--ink);" />' +
+    '<p class="section-hint" style="margin:6px 0 0;">Make sure every word is readable. Your documents go straight to our phone provider for this check only -- we don\'t keep a copy.</p>' +
     '<button class="btn btn-primary" id="nvSubmit" style="margin-top:14px;">Send my details</button>' +
     '<div id="nvResult" style="margin-top:8px; font-size:13px; display:none;"></div>';
 
@@ -470,6 +472,26 @@ function renderNumberSetup(box, data) {
       return showError(err.message || 'Could not read that file. Please try a different photo.');
     }
 
+    let proof64 = '';
+    let proofFilename = '';
+    const proofFile = document.getElementById('nvProof').files[0];
+    if (proofFile) {
+      try {
+        proofFilename = proofFile.name || 'proof-of-address';
+        if (proofFile.type && proofFile.type.indexOf('image/') === 0) {
+          proof64 = await shrinkImage(proofFile);
+          proofFilename = proofFilename.replace(/\.[^.]+$/, '') + '.jpg';
+        } else {
+          if (proofFile.size > 10 * 1024 * 1024) throw new Error('Your proof of address file is too big. Please use a PDF under 10MB, or a photo.');
+          proof64 = await readAsDataUrl(proofFile);
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Send my details';
+        return showError(err.message || 'Could not read your proof of address. Please try a different file.');
+      }
+    }
+
     const result = await fetch('/api/client-portal/' + token + '/number-verification', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -486,6 +508,8 @@ function renderNumberSetup(box, data) {
         website: website,
         documentBase64: document64,
         documentFilename: filename,
+        proofBase64: proof64,
+        proofFilename: proofFilename,
       }),
     }).then((r) => r.json()).catch(() => ({ error: 'Could not reach the server. Please check your connection and try again.' }));
 
