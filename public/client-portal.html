@@ -40,6 +40,7 @@
         <div style="font-weight:600; color:#e88888; margin-bottom:8px;">⚠️ Your subscription is cancelled</div>
         <p style="font-size:13.5px; color:#e88888; margin:0 0 12px;">Resubscribe any time to bring your AI agent back online.</p>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-secondary resub-btn" data-plan="solo">Resubscribe — Solo</button>
           <button class="btn btn-secondary resub-btn" data-plan="starter">Resubscribe — Starter</button>
           <button class="btn btn-secondary resub-btn" data-plan="growth">Resubscribe — Growth</button>
         </div>
@@ -132,7 +133,8 @@
 
         <div class="section-block">
           <h2>Website chat widget</h2>
-          <p class="section-hint">Paste this into your own website (just before <code>&lt;/body&gt;</code>) to add your AI chat widget there.</p>
+          <p class="section-hint" id="widgetPlanNote" style="display:none;">Website chat isn't part of the Solo plan. Upgrade to Starter to add your AI chat to your website.</p>
+          <p class="section-hint" id="widgetPasteHint">Paste this into your own website (just before <code>&lt;/body&gt;</code>) to add your AI chat widget there.</p>
           <textarea readonly id="widgetSnippet" style="width:100%; padding:8px; border-radius:6px; border:1px solid var(--line); font-size:11.5px; font-family:ui-monospace, monospace; min-height:60px;" onclick="this.select()"></textarea>
           <div style="margin-top:8px;"><a href="/widget-guide.html" target="_blank" style="font-size:13px; color:var(--accent); font-weight:600;">Step-by-step install guide →</a></div>
         </div>
@@ -217,7 +219,7 @@ const loadingState = document.getElementById('loadingState');
 const invalidState = document.getElementById('invalidState');
 const mainState = document.getElementById('mainState');
 
-const PLAN_MINUTES = { starter: 250, growth: 750 };
+const PLAN_MINUTES = { solo: 150, starter: 400, growth: 1000 };
 const OUTCOME_LABELS = {
   booked: '✅ Booked',
   unbooked_lead: '🟠 Unbooked lead',
@@ -319,6 +321,11 @@ function render(data) {
   const widgetSnippet = '<script src="' + window.location.origin + '/widget.js" data-client-id="' + data.id +
     '" data-company-name="' + escapeAttr(data.companyName) + '" data-label="Chat with us"><' + '/script>';
   document.getElementById('widgetSnippet').value = widgetSnippet;
+  const widgetAllowed = data.planIncludesWebsiteChat !== false;
+  document.getElementById('widgetPlanNote').style.display = widgetAllowed ? 'none' : 'block';
+  document.getElementById('widgetPasteHint').style.display = widgetAllowed ? '' : 'none';
+  document.getElementById('widgetSnippet').style.display = widgetAllowed ? '' : 'none';
+  document.querySelector('a[href="/widget-guide.html"]').parentElement.style.display = widgetAllowed ? '' : 'none';
 
   renderHostedPage(data);
   renderConversations(data.conversations || []);
@@ -551,6 +558,10 @@ async function shrinkImage(file) {
 
 function renderCalendar(data) {
   const box = document.getElementById('calendarBox');
+  if (data.planIncludesCalendar === false) {
+    box.innerHTML = '<p class="section-hint" style="margin:0;">Calendar booking isn\'t part of the Solo plan -- your AI takes each caller\'s details and preferred time, and you confirm the booking. Upgrade to Starter to have jobs booked straight into your calendar.</p>';
+    return;
+  }
   if (data.googleCalendarNeedsReconnect) {
     box.innerHTML =
       '<div style="font-size:13px; color:#e88888; margin-bottom:8px;">⚠️ Your calendar connection needs to be reconnected.</div>' +
