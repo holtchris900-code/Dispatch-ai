@@ -122,6 +122,7 @@ function maybeRefreshPhoneAgentToolsInBackground(clientRecord, baseUrl) {
     toolsUrl: `${baseUrl}/api/retell/tools/${retellWebhookToken()}`,
     timeZone: clientRecord.intake?.timeZone,
     appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
+    transferNumber: clientRecord.intake?.onCallNumber,
   })
     .then(() => {
       db.updateClient(clientRecord.id, { retellToolsVersion: PHONE_AGENT_TOOLS_VERSION });
@@ -456,6 +457,7 @@ function clientPortalView(clientRecord) {
           failedAt: clientRecord.numberSetup.failedAt || null,
         }
       : null,
+    onCallNumber: clientRecord.intake?.onCallNumber || '',
     googleCalendarConnectedAt: clientRecord.googleCalendarConnectedAt || null,
     googleCalendarEmail: clientRecord.googleCalendarEmail || null,
     googleCalendarNeedsReconnect: !!clientRecord.googleCalendarNeedsReconnect,
@@ -1230,7 +1232,7 @@ const CLIENT_LOGIN_TOKEN_TTL_MS = 15 * 60 * 1000;
 // booking) as the embeddable widget.js clients paste into their own sites --
 // the only difference is where the chat lives, tagged with
 // source:'hosted-page' so it's distinguishable in their conversation list.
-function renderHostedSitePage(clientRecord) {
+function renderHostedSitePage(clientRecord, source = 'hosted-page') {
   const intake = clientRecord.intake || {};
   const companyName = escapeHtml(intake.companyName || 'Our business');
   const tagline = [intake.trades, intake.serviceArea].filter(Boolean).map(escapeHtml).join(' · ');
@@ -1317,7 +1319,7 @@ async function sendMessage() {
     const res = await fetch('/api/widget-chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ clientId: clientId, messages: history, conversationId: conversationId, source: 'hosted-page' })
+      body: JSON.stringify({ clientId: clientId, messages: history, conversationId: conversationId, source: ${JSON.stringify(source)} })
     });
     const data = await res.json();
     placeholder.remove();
@@ -1650,7 +1652,7 @@ const server = http.createServer(async (req, res) => {
         }, WIDGET_CORS_HEADERS);
       }
 
-      if (!planAllows(clientRecord.plan, 'websiteChat')) {
+      if (source !== 'text-link' && !planAllows(clientRecord.plan, 'websiteChat')) {
         return sendJson(res, 200, {
           text: "Sorry, chat isn't available here -- please give us a call instead.",
           unavailable: true,
@@ -1679,7 +1681,7 @@ const server = http.createServer(async (req, res) => {
         // site (see /site/:slug below) instead of a widget embedded on
         // their own site, so it's distinguishable in their conversation
         // list even though both paths otherwise behave identically.
-        source: source === 'hosted-page' ? 'hosted-page' : 'website-widget',
+        source: source === 'hosted-page' || source === 'text-link' ? source : 'website-widget',
         messages: fullTranscript,
       });
 
@@ -2493,6 +2495,7 @@ const server = http.createServer(async (req, res) => {
             toolsUrl: `${toolsBaseUrl}/api/retell/tools/${retellWebhookToken()}`,
             timeZone: clientRecord.intake?.timeZone,
             appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
+            transferNumber: clientRecord.intake?.onCallNumber,
           });
           db.updateClient(clientRecord.id, { retellToolsVersion: PHONE_AGENT_TOOLS_VERSION });
         } catch (err) {
@@ -2541,6 +2544,7 @@ const server = http.createServer(async (req, res) => {
         toolsUrl: `${baseUrl}/api/retell/tools/${retellWebhookToken()}`,
         timeZone: clientRecord.intake?.timeZone,
         appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
+        transferNumber: clientRecord.intake?.onCallNumber,
       });
 
       
@@ -2590,7 +2594,26 @@ const server = http.createServer(async (req, res) => {
         retellPhoneNumberSavedAt: new Date().toISOString(),
       });
       return sendJson(res, 200, clientPortalView(updated));
-    }    const clientPortalServiceM8Match = pathname.match(/^\/api\/client-portal\/([^/]+)\/service-m8$/);
+    }    // Owner's mobile for transfers ("I'd like to speak to a person") and
+    // urgent alerts. Saving it re-syncs their phone agent straight away.
+    const clientPortalOnCallMatch = pathname.match(/^\/api\/client-portal\/([^/]+)\/on-call-number$/);
+    if (clientPortalOnCallMatch && req.method === 'POST') {
+      const clientRecord = db.getClientByPortalToken(clientPortalOnCallMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+      const { onCallNumber } = await readBody(req);
+      const cleaned = String(onCallNumber || '').trim();
+      if (cleaned && !/^(\+44|0)[\d\s]{9,13}$/.test(cleaned)) {
+        return sendJson(res, 400, { error: 'Please enter a UK number, e.g. 07700 900123.' });
+      }
+      const updated = db.updateClient(clientRecord.id, {
+        intake: { ...(clientRecord.intake || {}), onCallNumber: cleaned },
+        retellToolsVersion: 0,
+      });
+      maybeRefreshPhoneAgentToolsInBackground(updated, `${url.protocol}//${url.host}`);
+      return sendJson(res, 200, clientPortalView(updated));
+    }
+
+    const clientPortalServiceM8Match = pathname.match(/^\/api\/client-portal\/([^/]+)\/service-m8$/);
     if (clientPortalServiceM8Match && req.method === 'POST') {
       const clientRecord = db.getClientByPortalToken(clientPortalServiceM8Match[1]);
       if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
@@ -2907,6 +2930,7 @@ const server = http.createServer(async (req, res) => {
             toolsUrl: `${toolsBaseUrl}/api/retell/tools/${retellWebhookToken()}`,
             timeZone: clientRecord.intake?.timeZone,
             appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
+            transferNumber: clientRecord.intake?.onCallNumber,
           });
           db.updateClient(clientRecord.id, { retellToolsVersion: PHONE_AGENT_TOOLS_VERSION });
         } catch (err) {
@@ -2953,6 +2977,7 @@ const server = http.createServer(async (req, res) => {
         toolsUrl: `${baseUrl}/api/retell/tools/${retellWebhookToken()}`,
         timeZone: clientRecord.intake?.timeZone,
         appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
+        transferNumber: clientRecord.intake?.onCallNumber,
       });
 
 
@@ -3744,11 +3769,46 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
+      if (payload.name === 'send_help_link') {
+        const callerNumber = payload.call?.from_number;
+        if (!callerNumber || !clientRecord.retellPhoneNumber) {
+          return sendJson(res, 200, {
+            sent: false,
+            note: "Couldn't send a text on this call. Take whatever details you can with log_job_request and tell them someone will call back.",
+          });
+        }
+        const helpUrl = `${url.protocol}//${url.host}/help/${clientRecord.id}`;
+        const companyName = clientRecord.intake?.companyName || 'us';
+        const sms = await sendSms({
+          to: callerNumber,
+          from: clientRecord.retellPhoneNumber,
+          text: `${companyName}: sorry for the trouble on the phone. Tap here to type what you need and we'll get you sorted: ${helpUrl}`,
+        });
+        return sendJson(res, 200, sms && sms.success
+          ? { sent: true, note: 'The text has been sent. Let the caller know it should arrive in a moment, then end the call politely unless they want anything else.' }
+          : { sent: false, note: "The text couldn't be sent. Take whatever details you can with log_job_request and tell them someone will call back." });
+      }
+
       const result = await executeBookingTool(payload.name, payload.args || {}, clientRecord, 'phone call', payload.call?.call_id || null);
       return sendJson(res, 200, result);
     }
 
     // Public hosted-website add-on page -- see renderHostedSitePage above.
+
+    // The page a caller gets texted when the phone AI is struggling to
+    // understand them (send_help_link, below): same chat as the hosted page,
+    // so they can type what they need and book, and the AI adds it to the
+    // business's jobs and appointments. Works on every plan.
+    const helpPageMatch = pathname.match(/^\/help\/([^/]+)$/);
+    if (helpPageMatch && req.method === 'GET') {
+      const clientRecord = db.getClient(helpPageMatch[1]);
+      if (!clientRecord || clientRecord.status !== 'paid') {
+        res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end(simpleHtmlPage('Page not found', "This link isn't available any more.", '/', 'Go to Dispatch AI'));
+      }
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(renderHostedSitePage(clientRecord, 'text-link'));
+    }
 
     const hostedSiteMatch = pathname.match(/^\/site\/([^/]+)$/);
     if (hostedSiteMatch && req.method === 'GET') {
