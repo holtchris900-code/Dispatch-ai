@@ -55,6 +55,13 @@
         <div class="section-block" id="phoneSection">
           <h2>Your phone agent</h2>
           <div id="phoneBox"></div>
+          <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--line);">
+            <label for="onCallInput" style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Your mobile for urgent calls</label>
+            <p class="section-hint" style="margin:0 0 8px;">When a caller asks to speak to a person, your AI puts them through to this number, and urgent jobs are texted here. Leave it blank and your AI takes a message instead.</p>
+            <input id="onCallInput" type="tel" placeholder="07..." style="width:100%; box-sizing:border-box; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:var(--paper); color:var(--ink); font-size:15px;" />
+            <button class="btn btn-secondary" id="onCallSaveBtn" style="margin-top:8px;">Save number</button>
+            <div id="onCallResult" style="margin-top:6px; font-size:13px; display:none;"></div>
+          </div>
         </div>
 
         <div class="section-block" id="analyticsSection">
@@ -330,6 +337,7 @@ function render(data) {
   renderHostedPage(data);
   renderConversations(data.conversations || []);
   renderPhone(data);
+  setupOnCallNumber(data);
   renderCalendar(data);
   renderUsage(data);
   renderAnalytics(data);
@@ -363,6 +371,28 @@ function renderHostedPage(data) {
       load();
     });
   }
+}
+
+function setupOnCallNumber(data) {
+  const input = document.getElementById('onCallInput');
+  if (document.activeElement !== input) input.value = data.onCallNumber || '';
+  const btn = document.getElementById('onCallSaveBtn');
+  if (btn.dataset.wired) return;
+  btn.dataset.wired = '1';
+  btn.addEventListener('click', async () => {
+    const resultBox = document.getElementById('onCallResult');
+    btn.disabled = true;
+    const result = await api('/on-call-number', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ onCallNumber: input.value.trim() }),
+    }).catch(() => ({ error: 'Could not reach the server. Please try again.' }));
+    btn.disabled = false;
+    resultBox.style.display = 'block';
+    resultBox.innerHTML = result.error
+      ? '<span style="color:#e88888;">' + escapeAttr(result.error) + '</span>'
+      : '<span style="color:#7fd1a0;">Saved -- your AI will use this from the next call.</span>';
+  });
 }
 
 function renderPhone(data) {
