@@ -961,6 +961,28 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
 
   const getAccessToken = () => getGoogleAccessToken(clientRecord);
 
+  // Guard against the AI working from the wrong date (e.g. last year, or a
+  // time earlier today): never check or book a time that has already passed,
+  // and tell it what "now" is so it can correct itself.
+  const nowText = new Intl.DateTimeFormat('en-GB', {
+    timeZone, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  }).format(new Date());
+  const requestedDate = input.newDate || input.date;
+  const requestedTime = input.newStartTime || input.startTime;
+  if (
+    ['check_availability', 'book_appointment', 'reschedule_appointment'].includes(name) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(String(requestedDate || '')) &&
+    /^\d{2}:\d{2}$/.test(String(requestedTime || '')) &&
+    Date.parse(googleCalendar.toRfc3339(requestedDate, requestedTime, timeZone)) < Date.now()
+  ) {
+    return {
+      connected: true,
+      free: false,
+      booked: false,
+      note: `That time (${requestedDate} ${requestedTime}) has already passed. Right now it is ${nowText}. Work out the date again from today and ask the customer for a time in the future.`,
+    };
+  }
+
   try {
     if (name === 'check_availability') {
       const result = await googleCalendar.checkAvailability({
@@ -970,7 +992,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
         durationMinutes,
         timeZone,
       });
-      return { connected: true, free: result.free };
+      return { connected: true, free: result.free, now: nowText };
     }
 
     if (name === 'book_appointment') {
