@@ -21,7 +21,7 @@ const { buildScriptSafetyCheckPrompt, parseScriptSafetyCheck } = require('./lib/
 const { sendEmail } = require('./lib/emailClient');
 const { buildBookingConfirmationEmail } = require('./lib/bookingEmail');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession, createInvoiceItem, createRefund, cancelSubscriptionImmediately } = require('./lib/stripeClient');
-const { createPhoneAgent, updatePhoneAgentTools, retellWebhookToken, importPhoneNumber, PHONE_AGENT_TOOLS_VERSION } = require('./lib/retellClient');
+const { createPhoneAgent, updatePhoneAgentTools, retellWebhookToken, importPhoneNumber, PHONE_AGENT_TOOLS_VERSION, getAgentSnapshot } = require('./lib/retellClient');
 const { provisionPhoneNumber } = require('./lib/phoneProvisioning');
 const { sendSms, assignNumberToMessaging } = require('./lib/telnyxClient');
 const numberVerification = require('./lib/numberVerification');
@@ -3307,6 +3307,41 @@ const server = http.createServer(async (req, res) => {
         rejectedAt: new Date().toISOString(),
       });
       return sendJson(res, 200, updated);
+    }
+
+    // Founder-only (behind the dashboard password, like every /api/clients
+    // route): pushes the latest prompt + tools to every client's phone agent
+    // right now and shows what Retell has before and after, so it's obvious
+    // whether an update actually reached the agent that answers calls.
+    if (pathname === '/api/clients/phone-agent-check' && req.method === 'GET') {
+      const toolsBaseUrl = `${url.protocol}//${url.host}`;
+      const report = [];
+      for (const clientRecord of db.listClients()) {
+        if (!clientRecord.retellAgentId || !clientRecord.retellLlmId) continue;
+        const entry = {
+          company: clientRecord.intake?.companyName || clientRecord.id,
+          agentId: clientRecord.retellAgentId,
+          llmIdOnFile: clientRecord.retellLlmId,
+        };
+        try {
+          entry.update = await updatePhoneAgentTools({
+            llmId: clientRecord.retellLlmId,
+            companyName: clientRecord.intake?.companyName,
+            script: clientRecord.script,
+            toolsUrl: `${toolsBaseUrl}/api/retell/tools/${retellWebhookToken()}`,
+            timeZone: clientRecord.intake?.timeZone,
+            appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
+            transferNumber: clientRecord.intake?.onCallNumber,
+          });
+          db.updateClient(clientRecord.id, { retellToolsVersion: PHONE_AGENT_TOOLS_VERSION });
+        } catch (err) {
+          entry.updateError = err.message || String(err);
+        }
+        entry.retellNow = await getAgentSnapshot({ agentId: clientRecord.retellAgentId, llmId: clientRecord.retellLlmId });
+        report.push(entry);
+      }
+      res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+      return res.end(JSON.stringify({ toolsVersion: PHONE_AGENT_TOOLS_VERSION, agents: report }, null, 2));
     }
 
     const clientGetMatch = pathname.match(/^\/api\/clients\/([^/]+)$/);
