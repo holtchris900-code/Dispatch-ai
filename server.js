@@ -1043,6 +1043,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
       // the right one afterwards.
       const appointment = db.addAppointment({
         clientId: clientRecord.id,
+        callId,
         customerName: input.customerName,
         customerPhone: input.customerPhone,
         customerEmail: input.customerEmail,
@@ -1068,7 +1069,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
             await sendSms({
               to: input.customerPhone,
               from: clientRecord.retellPhoneNumber,
-              text: `${companyName}: you're booked in for ${whenLabel}. Manage or change this booking: ${manageUrl}`,
+              text: `${companyName}: you're booked in for ${whenLabel}. Check your details, fix anything wrong, or change the booking: ${manageUrl}`,
             });
           } catch (err) {
             console.error(`Booking confirmation text failed for client ${clientRecord.id}:`, err.message || err);
@@ -3730,9 +3731,111 @@ const server = http.createServer(async (req, res) => {
         endAt: appt.endAt,
         timeZone: appt.timeZone,
         description: appt.description,
+        customerName: appt.customerName || '',
+        customerPhone: appt.customerPhone || '',
+        customerEmail: appt.customerEmail || '',
         customerAddress: appt.customerAddress || '',
         companyName: clientRecord?.intake?.companyName || 'the business',
       });
+    }
+
+    // Lets the customer correct their own details (a misheard address,
+    // email, etc.) from the link in their confirmation. Updates the
+    // appointment, the matching job, and the calendar event, and tells the
+    // business exactly what changed.
+    const appointmentDetailsMatch = pathname.match(/^\/api\/appointment\/([^/]+)\/details$/);
+    if (appointmentDetailsMatch && req.method === 'POST') {
+      const appt = db.getAppointmentByManageToken(appointmentDetailsMatch[1]);
+      if (!appt || appt.status === 'cancelled') return sendJson(res, 404, { error: 'not found' });
+      const clientRecord = db.getClient(appt.clientId);
+      const body = await readBody(req);
+      const clean = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+      const next = {
+        customerName: clean(body.customerName, 120),
+        customerPhone: clean(body.customerPhone, 40),
+        customerEmail: clean(body.customerEmail, 160),
+        customerAddress: clean(body.customerAddress, 300),
+        description: clean(body.description, 1000),
+      };
+      if (!next.customerName) return sendJson(res, 400, { error: 'Please enter your name.' });
+      if (!next.customerPhone && !next.customerEmail) {
+        return sendJson(res, 400, { error: 'Please leave a phone number or email so the business can reach you.' });
+      }
+      if (next.customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next.customerEmail)) {
+        return sendJson(res, 400, { error: "That email address doesn't look right -- please check it." });
+      }
+      if (next.customerPhone && next.customerPhone.replace(/\D/g, '').length < 10) {
+        return sendJson(res, 400, { error: "That phone number looks too short -- please check it." });
+      }
+
+      const labels = { customerName: 'Name', customerPhone: 'Phone', customerEmail: 'Email', customerAddress: 'Address', description: 'Job' };
+      const changes = Object.keys(labels)
+        .filter((key) => (appt[key] || '') !== next[key])
+        .map((key) => ({ label: labels[key], from: appt[key] || '(blank)', to: next[key] || '(blank)' }));
+      if (!changes.length) return sendJson(res, 200, { saved: true, changed: false });
+
+      const updated = db.updateAppointment(appt.id, next);
+
+      // Matching job: same call if we know it, otherwise the latest job
+      // with the details this booking was made under.
+      try {
+        const jobs = db.listJobsForClient(appt.clientId);
+        const job =
+          (appt.callId && jobs.find((j) => j.callId === appt.callId)) ||
+          jobs
+            .filter((j) => (appt.customerPhone && j.customerPhone === appt.customerPhone) || (appt.customerEmail && j.customerEmail === appt.customerEmail))
+            .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
+        if (job) {
+          db.updateJob(job.id, {
+            customerName: next.customerName,
+            customerPhone: next.customerPhone,
+            customerEmail: next.customerEmail,
+            customerAddress: next.customerAddress,
+            ...(next.description ? { jobDescription: next.description } : {}),
+          });
+        }
+      } catch (err) {
+        console.error(`Updating job from customer details change failed for appointment ${appt.id}:`, err.message || err);
+      }
+
+      try {
+        if (appt.calendarEventId && clientRecord && googleCalendar.isConfigured() && clientRecord.googleRefreshToken) {
+          await googleCalendar.updateAppointmentDetails({
+            getAccessToken: () => getGoogleAccessToken(clientRecord),
+            eventId: appt.calendarEventId,
+            summary: `${next.customerName} -- ${next.description || 'Service call'}`,
+            description: [
+              next.customerPhone ? `Phone: ${next.customerPhone}` : null,
+              next.customerEmail ? `Email: ${next.customerEmail}` : null,
+              next.customerAddress ? `Address: ${next.customerAddress}` : null,
+              next.description ? `Issue: ${next.description}` : null,
+              'Details updated by the customer from their booking link.',
+            ].filter(Boolean).join('\n'),
+            location: next.customerAddress,
+          });
+        }
+      } catch (err) {
+        console.error(`Calendar update from customer details change failed for appointment ${appt.id}:`, err.message || err);
+      }
+
+      const ownerEmail = clientRecord?.intake?.contactEmail;
+      if (ownerEmail) {
+        try {
+          const companyName = clientRecord.intake?.companyName || 'your business';
+          const whenLabel = formatApptForHuman(updated.startAt, updated.timeZone);
+          const lines = changes.map((c) => `${c.label}: ${c.from} -> ${c.to}`).join('\n');
+          await sendEmail({
+            to: ownerEmail,
+            subject: `${companyName}: ${next.customerName} updated their booking details`,
+            text: `${next.customerName} corrected their details for the appointment on ${whenLabel}:\n\n${lines}\n\nYour calendar and job list have been updated.`,
+            fromName: 'Dispatch AI',
+          });
+        } catch (err) {
+          console.error(`Owner details-change email failed for client ${clientRecord.id}:`, err.message || err);
+        }
+      }
+
+      return sendJson(res, 200, { saved: true, changed: true });
     }
 
     const appointmentCancelMatch = pathname.match(/^\/api\/appointment\/([^/]+)\/cancel$/);

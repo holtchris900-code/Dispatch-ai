@@ -39,6 +39,21 @@
       </div>
 
       <div class="section-block">
+        <h2>Are your details right?</h2>
+        <p class="section-hint">Our assistant can mishear things on the phone. If anything below is wrong, fix it and tap Save -- the business gets your corrected details straight away.</p>
+        <button class="btn btn-secondary" id="editDetailsBtn">Fix my details</button>
+        <form id="detailsForm" style="display:none;">
+          <label class="field">Name<input id="fName" autocomplete="name"></label>
+          <label class="field">Phone<input id="fPhone" type="tel" autocomplete="tel"></label>
+          <label class="field">Email<input id="fEmail" type="email" autocomplete="email"></label>
+          <label class="field">Address (with postcode)<input id="fAddress" autocomplete="street-address"></label>
+          <label class="field">What you need<textarea id="fDescription" rows="2"></textarea></label>
+          <button type="submit" class="btn btn-primary" id="saveDetailsBtn">Save</button>
+        </form>
+        <div id="detailsResult" style="margin-top:10px; font-size:13px; display:none;"></div>
+      </div>
+
+      <div class="section-block">
         <h2>Need to cancel?</h2>
         <button class="btn btn-secondary" id="cancelBtn">Cancel this appointment</button>
         <div id="cancelResult" style="margin-top:10px; font-size:13px; display:none;"></div>
@@ -62,6 +77,8 @@
   .section-block { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
   .section-block h2 { font-size: 17px; margin: 0 0 6px; }
   .section-hint { font-size: 13px; color: var(--ink-soft); margin: 0 0 10px; }
+  .field { display: block; font-size: 13px; color: var(--ink-soft); margin: 0 0 12px; }
+  .field input, .field textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 5px; padding: 10px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: inherit; font-size: 16px; font-family: inherit; }
 </style>
 
 <script>
@@ -121,6 +138,11 @@ function render(appt) {
   document.getElementById('apptWhen').textContent = when;
   document.getElementById('apptDescription').textContent = appt.description || '';
   document.getElementById('apptAddress').textContent = appt.customerAddress || '';
+  document.getElementById('fName').value = appt.customerName || '';
+  document.getElementById('fPhone').value = appt.customerPhone || '';
+  document.getElementById('fEmail').value = appt.customerEmail || '';
+  document.getElementById('fAddress').value = appt.customerAddress || '';
+  document.getElementById('fDescription').value = appt.description || '';
 }
 
 document.getElementById('cancelBtn').addEventListener('click', async () => {
@@ -177,6 +199,45 @@ document.getElementById('rescheduleBtn').addEventListener('click', async () => {
     resultBox.innerHTML = '<span style="color:#e88888;">Something went wrong. Try again in a moment.</span>';
     btn.disabled = false;
   }
+});
+
+document.getElementById('editDetailsBtn').addEventListener('click', () => {
+  document.getElementById('detailsForm').style.display = 'block';
+  document.getElementById('editDetailsBtn').style.display = 'none';
+});
+
+document.getElementById('detailsForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('saveDetailsBtn');
+  const resultBox = document.getElementById('detailsResult');
+  resultBox.style.display = 'block';
+  btn.disabled = true;
+  resultBox.textContent = 'Saving...';
+  try {
+    const res = await fetch('/api/appointment/' + token + '/details', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        customerName: document.getElementById('fName').value,
+        customerPhone: document.getElementById('fPhone').value,
+        customerEmail: document.getElementById('fEmail').value,
+        customerAddress: document.getElementById('fAddress').value,
+        description: document.getElementById('fDescription').value,
+      }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      resultBox.innerHTML = '<span style="color:#e88888;">' + escapeAttr(data.error) + '</span>';
+    } else {
+      resultBox.innerHTML = '<span style="color:#6fcf8e;">' + (data.changed ? 'Saved -- the business has your corrected details.' : 'Nothing changed -- your details were already right.') + '</span>';
+      document.getElementById('detailsForm').style.display = 'none';
+      document.getElementById('editDetailsBtn').style.display = '';
+      load();
+    }
+  } catch (err) {
+    resultBox.innerHTML = '<span style="color:#e88888;">Something went wrong. Try again in a moment.</span>';
+  }
+  btn.disabled = false;
 });
 
 load();
