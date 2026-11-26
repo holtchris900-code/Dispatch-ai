@@ -118,6 +118,8 @@ function maybeRefreshPhoneAgentToolsInBackground(clientRecord, baseUrl) {
   if ((clientRecord.retellToolsVersion || 0) >= PHONE_AGENT_TOOLS_VERSION) return;
   updatePhoneAgentTools({
     llmId: clientRecord.retellLlmId,
+    agentId: clientRecord.retellAgentId,
+    phoneNumber: clientRecord.retellPhoneNumber,
     companyName: clientRecord.intake?.companyName,
     script: clientRecord.script,
     toolsUrl: `${baseUrl}/api/retell/tools/${retellWebhookToken()}`,
@@ -2515,6 +2517,8 @@ const server = http.createServer(async (req, res) => {
           const toolsBaseUrl = `${url.protocol}//${url.host}`;
           await updatePhoneAgentTools({
             llmId: clientRecord.retellLlmId,
+            agentId: clientRecord.retellAgentId,
+            phoneNumber: clientRecord.retellPhoneNumber,
             companyName: clientRecord.intake?.companyName,
             script: clientRecord.script,
             toolsUrl: `${toolsBaseUrl}/api/retell/tools/${retellWebhookToken()}`,
@@ -2950,6 +2954,8 @@ const server = http.createServer(async (req, res) => {
           const toolsBaseUrl = `${url.protocol}//${url.host}`;
           await updatePhoneAgentTools({
             llmId: clientRecord.retellLlmId,
+            agentId: clientRecord.retellAgentId,
+            phoneNumber: clientRecord.retellPhoneNumber,
             companyName: clientRecord.intake?.companyName,
             script: clientRecord.script,
             toolsUrl: `${toolsBaseUrl}/api/retell/tools/${retellWebhookToken()}`,
@@ -3326,6 +3332,8 @@ const server = http.createServer(async (req, res) => {
         try {
           entry.update = await updatePhoneAgentTools({
             llmId: clientRecord.retellLlmId,
+            agentId: clientRecord.retellAgentId,
+            phoneNumber: clientRecord.retellPhoneNumber,
             companyName: clientRecord.intake?.companyName,
             script: clientRecord.script,
             toolsUrl: `${toolsBaseUrl}/api/retell/tools/${retellWebhookToken()}`,
