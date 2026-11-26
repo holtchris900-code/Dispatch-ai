@@ -19,6 +19,7 @@ const { buildConversationInsightPrompt, parseConversationInsight } = require('./
 const { buildFollowUpDraftPrompt, parseFollowUpDraft } = require('./lib/followUpPrompt');
 const { buildScriptSafetyCheckPrompt, parseScriptSafetyCheck } = require('./lib/scriptSafetyCheckPrompt');
 const { sendEmail } = require('./lib/emailClient');
+const { buildBookingConfirmationEmail } = require('./lib/bookingEmail');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession, createInvoiceItem, createRefund, cancelSubscriptionImmediately } = require('./lib/stripeClient');
 const { createPhoneAgent, updatePhoneAgentTools, retellWebhookToken, importPhoneNumber, PHONE_AGENT_TOOLS_VERSION } = require('./lib/retellClient');
 const { provisionPhoneNumber } = require('./lib/phoneProvisioning');
@@ -73,7 +74,7 @@ async function notifyBusinessOwnerOfAppointmentChange(clientRecord, appt, kind) 
     const companyName = clientRecord.intake?.companyName || 'your business';
     const who = appt.customerName || 'A customer';
     const contactBits = [appt.customerPhone, appt.customerEmail].filter(Boolean).join(' / ');
-    const whoLine = contactBits ? `${who} (${contactBits})` : who;
+    const whoLine = (contactBits ? `${who} (${contactBits})` : who) + (appt.customerAddress ? ` at ${appt.customerAddress}` : '');
     const whenLabel = formatApptForHuman(appt.startAt, appt.timeZone);
     const portalLink = clientRecord.clientPortalToken
       ? `${PUBLIC_BASE_URL}/client-portal.html?token=${clientRecord.clientPortalToken}`
@@ -591,7 +592,7 @@ async function fillJobFromTranscript(jobId, transcript) {
   if (!text.trim() || !process.env.ANTHROPIC_API_KEY) return;
   const result = await callClaude({
     system:
-      'You read phone call transcripts between an AI receptionist for a UK trades business and a caller, and pull out the job request. Reply with ONLY a JSON object with these keys: customerName, customerPhone, customerEmail, jobDescription, preferredTime. Use an empty string for anything the caller did not give. Write phone numbers as digits (e.g. "o seven seven..." becomes 077...), and emails in normal form (e.g. "john at gmail dot com" becomes john@gmail.com). jobDescription is one short sentence in plain English, and should say if the caller called it urgent. If the call has no real job request (a wrong number, a quick question), set jobDescription to a short note of what the call was about.',
+      'You read phone call transcripts between an AI receptionist for a UK trades business and a caller, and pull out the job request. Reply with ONLY a JSON object with these keys: customerName, customerPhone, customerEmail, customerAddress, jobDescription, preferredTime. customerAddress is where the work is needed, with the postcode if given. Use an empty string for anything the caller did not give. Write phone numbers as digits (e.g. "o seven seven..." becomes 077...), and emails in normal form (e.g. "john at gmail dot com" becomes john@gmail.com). jobDescription is one short sentence in plain English, and should say if the caller called it urgent. If the call has no real job request (a wrong number, a quick question), set jobDescription to a short note of what the call was about.',
     messages: [{ role: 'user', content: text }],
     maxTokens: 300,
   });
@@ -605,7 +606,7 @@ async function fillJobFromTranscript(jobId, transcript) {
     return;
   }
   const updates = {};
-  for (const key of ['customerName', 'customerPhone', 'customerEmail', 'preferredTime']) {
+  for (const key of ['customerName', 'customerPhone', 'customerEmail', 'customerAddress', 'preferredTime']) {
     const value = typeof found[key] === 'string' ? found[key].trim() : '';
     if (value) updates[key] = value;
   }
@@ -759,6 +760,7 @@ const BOOKING_TOOLS = [
         customerName: { type: 'string' },
         customerPhone: { type: 'string' },
         customerEmail: { type: 'string' },
+        customerAddress: { type: 'string', description: 'Address where the work is needed, including the postcode' },
         issueDescription: { type: 'string', description: 'Short description of what the customer needs' },
       },
       required: ['date', 'startTime', 'customerName'],
@@ -789,6 +791,7 @@ BOOKING_TOOLS.push({
       customerName: { type: 'string' },
       customerPhone: { type: 'string' },
       customerEmail: { type: 'string' },
+      customerAddress: { type: 'string', description: 'Address where the work is needed, including the postcode' },
       jobDescription: { type: 'string', description: 'What they want done, in their own words' },
       preferredTime: {
         type: 'string',
@@ -915,7 +918,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
         ? db.listJobsForClient(clientRecord.id).find((j) => j.callId === callId)
         : null;
       if (existing) {
-        const fields = ['customerName', 'customerPhone', 'customerEmail', 'jobDescription', 'preferredTime'];
+        const fields = ['customerName', 'customerPhone', 'customerEmail', 'customerAddress', 'jobDescription', 'preferredTime'];
         const updates = {};
         for (const key of fields) {
           if (typeof input[key] === 'string' && input[key].trim()) updates[key] = input[key].trim();
@@ -930,6 +933,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
         customerName: input.customerName,
         customerPhone: input.customerPhone,
         customerEmail: input.customerEmail,
+        customerAddress: input.customerAddress,
         jobDescription: input.jobDescription,
         preferredTime: input.preferredTime,
       });
@@ -950,14 +954,14 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
   if (!planAllows(clientRecord.plan, 'calendarBooking')) {
     return {
       connected: false,
-      note: "Live calendar booking isn't part of this business's plan. Call log_job_request now with the customer's name, phone number or email, what they need and when they'd like it (if you haven't already), then tell them a team member will confirm the time -- do not say the appointment is booked.",
+      note: "Live calendar booking isn't part of this business's plan. Call log_job_request now with the customer's name, phone number or email, address, what they need and when they'd like it (if you haven't already), then tell them a team member will confirm the time -- do not say the appointment is booked.",
     };
   }
 
   if (!googleCalendar.isConfigured() || !clientRecord.googleRefreshToken) {
     return {
       connected: false,
-      note: "Live calendar booking isn't connected for this business yet. Call log_job_request now with the customer's name, phone number or email, what they need and when they'd like it (if you haven't already), then tell them a team member will confirm the time -- do not say the appointment is booked.",
+      note: "Live calendar booking isn't connected for this business yet. Call log_job_request now with the customer's name, phone number or email, address, what they need and when they'd like it (if you haven't already), then tell them a team member will confirm the time -- do not say the appointment is booked.",
     };
   }
 
@@ -1003,6 +1007,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
       const description = [
         input.customerPhone ? `Phone: ${input.customerPhone}` : null,
         input.customerEmail ? `Email: ${input.customerEmail}` : null,
+        input.customerAddress ? `Address: ${input.customerAddress}` : null,
         input.issueDescription ? `Issue: ${input.issueDescription}` : null,
                 `Booked automatically by ${companyName}'s Dispatch AI ${source}.`,
       ]
@@ -1017,6 +1022,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
         timeZone,
         summary,
         description,
+        location: input.customerAddress || '',
       });
 
       if (result.conflict) {
@@ -1038,6 +1044,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
         customerName: input.customerName,
         customerPhone: input.customerPhone,
         customerEmail: input.customerEmail,
+        customerAddress: input.customerAddress,
         startAt: result.startRfc,
         endAt: result.endRfc,
         timeZone,
@@ -1052,18 +1059,36 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
       try {
         const manageUrl = `${PUBLIC_BASE_URL}/manage-appointment.html?token=${appointment.manageToken}`;
         const whenLabel = formatApptForHuman(result.startRfc, timeZone);
+        // Text and email are sent independently: a customer who gave both
+        // gets both, and a failed text never stops the email.
         if (input.customerPhone && clientRecord.retellPhoneNumber) {
-          await sendSms({
-            to: input.customerPhone,
-            from: clientRecord.retellPhoneNumber,
-            text: `${companyName}: you're booked in for ${whenLabel}. Manage or change this booking: ${manageUrl}`,
+          try {
+            await sendSms({
+              to: input.customerPhone,
+              from: clientRecord.retellPhoneNumber,
+              text: `${companyName}: you're booked in for ${whenLabel}. Manage or change this booking: ${manageUrl}`,
+            });
+          } catch (err) {
+            console.error(`Booking confirmation text failed for client ${clientRecord.id}:`, err.message || err);
+          }
+        }
+        if (input.customerEmail) {
+          const email = buildBookingConfirmationEmail({
+            companyName,
+            customerName: input.customerName,
+            whenLabel,
+            jobDescription: input.issueDescription,
+            address: input.customerAddress,
+            businessPhone: clientRecord.retellPhoneNumber,
+            manageUrl,
           });
-        } else if (input.customerEmail) {
           await sendEmail({
             to: input.customerEmail,
-            subject: `${companyName} -- your appointment is booked`,
-            text: `Hi ${input.customerName || ''},\n\nYou're booked in for ${whenLabel} with ${companyName}.\n\nNeed to cancel or change the time? Use this link:\n${manageUrl}\n\n-- ${companyName} (via Dispatch AI)`,
+            subject: email.subject,
+            text: email.text,
+            html: email.html,
             fromName: companyName,
+            replyTo: clientRecord.intake?.contactEmail || undefined,
           });
         }
       } catch (err) {
@@ -1128,7 +1153,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
     if (err.message === 'not_connected') {
       return {
         connected: false,
-        note: "Live calendar booking isn't connected for this business yet. Call log_job_request now with the customer's name, phone number or email, what they need and when they'd like it (if you haven't already), then tell them a team member will confirm the time.",
+        note: "Live calendar booking isn't connected for this business yet. Call log_job_request now with the customer's name, phone number or email, address, what they need and when they'd like it (if you haven't already), then tell them a team member will confirm the time.",
       };
     }
     // Covers an expired/revoked refresh token, a Google outage, or anything
@@ -1141,7 +1166,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
     return {
       connected: true,
       error: true,
-      note: "Something went wrong reaching the calendar just now. Call log_job_request now with the customer's name, phone number or email, what they need and when they'd like it (if you haven't already), then tell them a team member will confirm the time shortly.",
+      note: "Something went wrong reaching the calendar just now. Call log_job_request now with the customer's name, phone number or email, address, what they need and when they'd like it (if you haven't already), then tell them a team member will confirm the time shortly.",
     };
   }
 }
@@ -2148,7 +2173,7 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 404, { error: 'not found' });
       }
       const updates = await readBody(req);
-      const allowedFields = ['customerName', 'customerPhone', 'customerEmail', 'jobDescription', 'preferredTime', 'status', 'notes'];
+      const allowedFields = ['customerName', 'customerPhone', 'customerEmail', 'customerAddress', 'jobDescription', 'preferredTime', 'status', 'notes'];
       const safeUpdates = {};
       allowedFields.forEach((key) => {
         if (key in updates) safeUpdates[key] = updates[key];
@@ -3662,6 +3687,7 @@ const server = http.createServer(async (req, res) => {
         endAt: appt.endAt,
         timeZone: appt.timeZone,
         description: appt.description,
+        customerAddress: appt.customerAddress || '',
         companyName: clientRecord?.intake?.companyName || 'the business',
       });
     }

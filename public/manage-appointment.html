@@ -35,6 +35,7 @@
       <div class="section-block" style="margin-top:20px; padding-top:0; border-top:none;">
         <div style="font-size:18px; font-weight:700; font-family:'Plus Jakarta Sans', sans-serif;" id="apptWhen"></div>
         <div style="font-size:13.5px; color:var(--ink-soft); margin-top:4px;" id="apptDescription"></div>
+        <div style="font-size:13.5px; color:var(--ink-soft); margin-top:4px;" id="apptAddress"></div>
       </div>
 
       <div class="section-block">
@@ -119,6 +120,7 @@ function render(appt) {
   const when = new Date(appt.startAt).toLocaleString(undefined, opts);
   document.getElementById('apptWhen').textContent = when;
   document.getElementById('apptDescription').textContent = appt.description || '';
+  document.getElementById('apptAddress').textContent = appt.customerAddress || '';
 }
 
 document.getElementById('cancelBtn').addEventListener('click', async () => {

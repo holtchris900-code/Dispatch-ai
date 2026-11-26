@@ -99,6 +99,7 @@
             <label>Customer name<input name="customerName" autocomplete="off"></label>
             <label>Phone<input name="customerPhone" type="tel" autocomplete="off"></label>
             <label>Email<input name="customerEmail" type="email" autocomplete="off"></label>
+            <label class="add-form-wide">Address (with postcode)<input name="customerAddress" autocomplete="off"></label>
             <label>When they'd like it<input name="preferredTime" placeholder="e.g. next Tuesday morning" autocomplete="off"></label>
             <label class="add-form-wide">What's the job?<textarea name="jobDescription" rows="2" required></textarea></label>
             <div class="add-form-actions">
@@ -1013,6 +1014,7 @@ function renderCustomerJobs(data) {
       '<td><input class="job-field" data-field="customerName" placeholder="Name" value="' + escapeAttr(job.customerName || '') + '" /></td>' +
       '<td><input class="job-field" data-field="customerPhone" placeholder="Phone" value="' + escapeAttr(job.customerPhone || '') + '" /></td>' +
       '<td><input class="job-field" data-field="customerEmail" placeholder="Email" value="' + escapeAttr(job.customerEmail || '') + '" /></td>' +
+      '<td class="wrap-cell"><textarea class="job-field" data-field="customerAddress" placeholder="Address">' + escapeAttr(job.customerAddress || '') + '</textarea></td>' +
       '<td class="wrap-cell"><textarea class="job-field" data-field="jobDescription" placeholder="Job wanted">' + escapeAttr(job.jobDescription || '') + '</textarea></td>' +
       '<td><input class="job-field" data-field="preferredTime" placeholder="Preferred time" value="' + escapeAttr(job.preferredTime || '') + '" /></td>' +
       '<td><select class="job-field" data-field="status">' + optionsHtml + '</select></td>' +
@@ -1026,7 +1028,7 @@ function renderCustomerJobs(data) {
 
   box.innerHTML = '<button class="btn btn-secondary" id="downloadJobsCsvBtn" style="margin-bottom:12px;">Download as spreadsheet (.csv)</button>' +
     '<div class="data-table-wrap"><table class="data-table"><thead><tr>' +
-    '<th>Date</th><th>Source</th><th>Name</th><th>Phone</th><th>Email</th><th>Job wanted</th><th>Preferred time</th><th>Status</th><th>Notes</th><th>Actions</th>' +
+    '<th>Date</th><th>Source</th><th>Name</th><th>Phone</th><th>Email</th><th>Address</th><th>Job wanted</th><th>Preferred time</th><th>Status</th><th>Notes</th><th>Actions</th>' +
     '</tr></thead><tbody>' + jobRowsHtml + '</tbody></table></div>';
 
   document.getElementById('downloadJobsCsvBtn').addEventListener('click', () => downloadJobsCsv(jobs));
@@ -1106,7 +1108,7 @@ function renderAppointments(data) {
       return '<tr class="appt-row" data-id="' + appt.id + '">' +
         '<td>' + apptTimeRange(appt.startAt, appt.endAt, appt.timeZone) + '</td>' +
         '<td class="wrap-cell">' + escapeAttr(appt.customerName || '—') + (contactBits ? '<div style="font-size:11.5px; color:var(--ink-soft); margin-top:2px;">' + contactBits + '</div>' : '') + '</td>' +
-        '<td class="wrap-cell">' + (appt.description ? escapeAttr(appt.description) : '—') + '</td>' +
+        '<td class="wrap-cell">' + (appt.description ? escapeAttr(appt.description) : '—') + (appt.customerAddress ? '<div style="font-size:11.5px; color:var(--ink-soft); margin-top:2px;">' + escapeAttr(appt.customerAddress) + '</div>' : '') + '</td>' +
         '<td class="wrap-cell">' +
         '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
         '<button class="btn btn-secondary appt-reschedule-btn" data-id="' + appt.id + '" style="font-size:11.5px; padding:5px 10px;">Change time</button>' +
@@ -1187,7 +1189,7 @@ function renderAppointments(data) {
 }
 
 function downloadJobsCsv(jobs) {
-  const headers = ['Date', 'Source', 'Name', 'Phone', 'Email', 'Job wanted', 'Preferred time', 'Status', 'Notes'];
+  const headers = ['Date', 'Source', 'Name', 'Phone', 'Email', 'Address', 'Job wanted', 'Preferred time', 'Status', 'Notes'];
   const csvEscape = (value) => '"' + String(value == null ? '' : value).replace(/"/g, '""') + '"';
   const rows = jobs.map((job) => [
     job.createdAt ? new Date(job.createdAt).toLocaleString() : '',
@@ -1195,6 +1197,7 @@ function downloadJobsCsv(jobs) {
     job.customerName || '',
     job.customerPhone || '',
     job.customerEmail || '',
+    job.customerAddress || '',
     job.jobDescription || '',
     job.preferredTime || '',
     job.status || '',
