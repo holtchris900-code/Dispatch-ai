@@ -115,7 +115,9 @@ async function notifyBusinessOwnerOfAppointmentChange(clientRecord, appt, kind) 
 // portal."
 function maybeRefreshPhoneAgentToolsInBackground(clientRecord, baseUrl) {
   if (!clientRecord || !clientRecord.retellAgentId || !clientRecord.retellLlmId) return;
-  if ((clientRecord.retellToolsVersion || 0) >= PHONE_AGENT_TOOLS_VERSION) return;
+  const wantedVoice = process.env.RETELL_VOICE_ID || null;
+  const voiceOutOfDate = wantedVoice && clientRecord.retellVoiceId !== wantedVoice;
+  if ((clientRecord.retellToolsVersion || 0) >= PHONE_AGENT_TOOLS_VERSION && !voiceOutOfDate) return;
   updatePhoneAgentTools({
     llmId: clientRecord.retellLlmId,
     agentId: clientRecord.retellAgentId,
@@ -127,8 +129,11 @@ function maybeRefreshPhoneAgentToolsInBackground(clientRecord, baseUrl) {
     appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
     transferNumber: clientRecord.intake?.onCallNumber,
   })
-    .then(() => {
-      db.updateClient(clientRecord.id, { retellToolsVersion: PHONE_AGENT_TOOLS_VERSION });
+    .then((result) => {
+      db.updateClient(clientRecord.id, {
+        retellToolsVersion: PHONE_AGENT_TOOLS_VERSION,
+        ...(result && result.voiceId ? { retellVoiceId: result.voiceId } : {}),
+      });
     })
     .catch((err) => {
       console.error(`Background phone-agent tools refresh failed for client ${clientRecord.id}:`, err.message || err);
@@ -2304,7 +2309,8 @@ const server = http.createServer(async (req, res) => {
 
       const check = await checkScriptSafety(clientRecord.intake, script);
       if (!check.checked || check.safe) {
-        const updated = db.updateClient(clientRecord.id, { script, pendingScriptEdit: null, reviewReason: null });
+        const updated = db.updateClient(clientRecord.id, { script, pendingScriptEdit: null, reviewReason: null, retellToolsVersion: 0 });
+        maybeRefreshPhoneAgentToolsInBackground(updated, `${url.protocol}//${url.host}`);
         return sendJson(res, 200, { ...clientPortalView(updated), autoApplied: true });
       }
 
@@ -2817,8 +2823,9 @@ const server = http.createServer(async (req, res) => {
     const clientScriptMatch = pathname.match(/^\/api\/clients\/([^/]+)\/script$/);
     if (clientScriptMatch && req.method === 'POST') {
       const { script } = await readBody(req);
-      const updated = db.updateClient(clientScriptMatch[1], { script });
+      const updated = db.updateClient(clientScriptMatch[1], { script, retellToolsVersion: 0 });
       if (!updated) return sendJson(res, 404, { error: 'not found' });
+      maybeRefreshPhoneAgentToolsInBackground(updated, `${url.protocol}//${url.host}`);
       return sendJson(res, 200, updated);
     }
 
@@ -3116,7 +3123,9 @@ const server = http.createServer(async (req, res) => {
         script: clientRecord.pendingScriptEdit,
         pendingScriptEdit: null,
         reviewReason: null,
+        retellToolsVersion: 0,
       });
+      maybeRefreshPhoneAgentToolsInBackground(updated, `${url.protocol}//${url.host}`);
       return sendJson(res, 200, updated);
     }
 
@@ -3342,7 +3351,10 @@ const server = http.createServer(async (req, res) => {
             appointmentLengthMinutes: clientRecord.intake?.appointmentLengthMinutes,
             transferNumber: clientRecord.intake?.onCallNumber,
           });
-          db.updateClient(clientRecord.id, { retellToolsVersion: PHONE_AGENT_TOOLS_VERSION });
+          db.updateClient(clientRecord.id, {
+            retellToolsVersion: PHONE_AGENT_TOOLS_VERSION,
+            ...(entry.update && entry.update.voiceId ? { retellVoiceId: entry.update.voiceId } : {}),
+          });
         } catch (err) {
           entry.updateError = err.message || String(err);
         }
