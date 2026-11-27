@@ -922,7 +922,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
     }
     if (onCallNumber && clientRecord.retellPhoneNumber) {
       try {
-        await sendSms({ to: onCallNumber, from: clientRecord.retellPhoneNumber, text: emergencySummaryLines });
+        await sendSms({ to: onCallNumber, from: clientRecord.retellPhoneNumber, senderName: clientRecord.intake?.companyName, text: emergencySummaryLines });
         return {
           alerted: true,
           note: 'The on-call number has just been texted about this. Tell the caller it has been flagged as urgent and someone will reach out right away.',
@@ -1115,6 +1115,7 @@ async function executeBookingTool(name, input, clientRecord, source = 'website c
             await sendSms({
               to: input.customerPhone,
               from: clientRecord.retellPhoneNumber,
+              senderName: clientRecord.intake?.companyName,
               text: `${companyName}: you're booked in for ${whenLabel}. Check your details, fix anything wrong, or change the booking: ${manageUrl}`,
             });
           } catch (err) {
@@ -2010,6 +2011,7 @@ const server = http.createServer(async (req, res) => {
         const smsResult = await sendSms({
           to: pc.phone,
           from: clientRecord.retellPhoneNumber,
+          senderName: clientRecord.intake?.companyName,
           text: pc.outreachBody || '',
         });
         if (smsResult.demoMode || !smsResult.success) {
@@ -3779,7 +3781,8 @@ try{var r=await fetch('/api/clients/'+id+'/replace-number',{method:'POST',header
             await sendSms({
               to: call.from_number,
               from: clientRecord.retellPhoneNumber,
-              text: `Sorry we missed you! This is ${companyName} -- reply here or call us back and we'll help right away.`,
+              senderName: clientRecord.intake?.companyName,
+              text: `Sorry we missed you! This is ${companyName} -- call us back on ${clientRecord.retellPhoneNumber} and we'll help right away.`,
             });
           } catch (err) {
             console.error('Missed-call text-back failed:', err.message || err);
@@ -4080,7 +4083,8 @@ try{var r=await fetch('/api/clients/'+id+'/replace-number',{method:'POST',header
         const sms = await sendSms({
           to: callerNumber,
           from: clientRecord.retellPhoneNumber,
-          text: `${companyName}: sorry for the trouble on the phone. Tap here to type what you need and we'll get you sorted: ${helpUrl}`,
+          senderName: clientRecord.intake?.companyName,
+          text: `${companyName}: here's your link -- tap it to tell us what you need and we'll get you sorted: ${helpUrl}`,
         });
         return sendJson(res, 200, sms && sms.success
           ? { sent: true, note: 'The text has been sent. Let the caller know it should arrive in a moment, then end the call politely unless they want anything else.' }
