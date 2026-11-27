@@ -355,6 +355,9 @@ async function advanceNumberSetup(clientRecord) {
         clientId: clientRecord.id,
         requirementGroupId: setup.requirementGroupId,
         town: setup.town,
+        postcode: setup.postcode,
+        phone: setup.phone,
+        serviceArea: clientRecord.intake?.serviceArea,
       });
       db.updateClient(clientRecord.id, {
         numberSetup: { ...setup, status: 'ordered', failReason: null, orderId: order.orderId, phoneNumber: order.phoneNumber, orderedAt: new Date().toISOString() },
@@ -2514,6 +2517,8 @@ const server = http.createServer(async (req, res) => {
             status: 'submitted',
             requirementGroupId,
             town: String(details.town || '').trim(),
+            postcode: String(details.postcode || '').trim(),
+            phone: String(details.phone || '').trim(),
             submittedAt: new Date().toISOString(),
           },
         });
