@@ -21,7 +21,7 @@ const { buildScriptSafetyCheckPrompt, parseScriptSafetyCheck } = require('./lib/
 const { sendEmail } = require('./lib/emailClient');
 const { buildBookingConfirmationEmail } = require('./lib/bookingEmail');
 const { createCheckoutSession, verifyStripeSignature, createPortalSession, getCheckoutSession, createInvoiceItem, createRefund, cancelSubscriptionImmediately } = require('./lib/stripeClient');
-const { createPhoneAgent, updatePhoneAgentTools, retellWebhookToken, importPhoneNumber, PHONE_AGENT_TOOLS_VERSION, getAgentSnapshot } = require('./lib/retellClient');
+const { createPhoneAgent, updatePhoneAgentTools, retellWebhookToken, importPhoneNumber, PHONE_AGENT_TOOLS_VERSION, getAgentSnapshot, deletePhoneNumber } = require('./lib/retellClient');
 const { provisionPhoneNumber } = require('./lib/phoneProvisioning');
 const { sendSms, assignNumberToMessaging } = require('./lib/telnyxClient');
 const numberVerification = require('./lib/numberVerification');
@@ -358,6 +358,7 @@ async function advanceNumberSetup(clientRecord) {
         postcode: setup.postcode,
         phone: setup.phone,
         serviceArea: clientRecord.intake?.serviceArea,
+        preferredAreaCode: setup.preferredAreaCode,
       });
       db.updateClient(clientRecord.id, {
         numberSetup: { ...setup, status: 'ordered', failReason: null, orderId: order.orderId, phoneNumber: order.phoneNumber, orderedAt: new Date().toISOString() },
@@ -3365,6 +3366,77 @@ const server = http.createServer(async (req, res) => {
         rejectedAt: new Date().toISOString(),
       });
       return sendJson(res, 200, updated);
+    }
+
+    // Founder-only page: swap a client's phone number for one with a chosen
+    // area code (e.g. a local 01606 instead of an Edinburgh number).
+    if (pathname === '/api/clients/replace-number' && req.method === 'GET') {
+      const rows = db.listClients()
+        .filter((c) => c.retellPhoneNumber || c.numberSetup?.phoneNumber)
+        .map((c) => {
+          const current = c.retellPhoneNumber || c.numberSetup?.phoneNumber;
+          const esc = (v) => String(v || '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+          return `<div class="row"><b>${esc(c.intake?.companyName || c.id)}</b><br>Current number: ${esc(current)}<br>
+            <label>New area code <input id="ac-${esc(c.id)}" inputmode="numeric" placeholder="e.g. 01606"></label>
+            <button data-id="${esc(c.id)}" data-current="${esc(current)}">Replace with a local number</button>
+            <div class="out" id="out-${esc(c.id)}"></div></div>`;
+        })
+        .join('') || '<p>No clients have a phone number yet.</p>';
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Replace a phone number</title>
+<style>body{font-family:-apple-system,Segoe UI,sans-serif;padding:18px;max-width:560px;margin:auto;color:#111}.row{border:1px solid #ddd;border-radius:10px;padding:14px;margin:12px 0;line-height:1.6}input{font-size:16px;padding:8px;width:120px;margin:6px 0}button{display:block;font-size:15px;padding:10px 14px;border-radius:8px;border:0;background:#111;color:#fff;margin-top:6px}.out{margin-top:8px;font-size:14px}</style></head><body>
+<h2>Replace a phone number</h2><p>This disconnects the current number from the AI, releases it in Telnyx (so it stops being billed), and orders a new one with the area code you enter, using the business details Telnyx already approved. The new number connects by itself, usually within the hour, and you'll get the "number is live" email.</p>${rows}
+<script>document.querySelectorAll('button[data-id]').forEach(function(b){b.onclick=async function(){var id=b.dataset.id,ac=document.getElementById('ac-'+id).value,out=document.getElementById('out-'+id);
+if(!confirm('Release '+b.dataset.current+' and order a new '+(ac||'local')+' number? The old number will stop working.'))return;b.disabled=true;out.textContent='Working...';
+try{var r=await fetch('/api/clients/'+id+'/replace-number',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({areaCode:ac})});var d=await r.json();out.textContent=d.error?('Problem: '+d.error):d.message;}catch(e){out.textContent='Something went wrong -- try again.';b.disabled=false;}};});</script></body></html>`);
+    }
+
+    const replaceNumberMatch = pathname.match(/^\/api\/clients\/([^/]+)\/replace-number$/);
+    if (replaceNumberMatch && req.method === 'POST') {
+      const clientRecord = db.getClient(replaceNumberMatch[1]);
+      if (!clientRecord) return sendJson(res, 404, { error: 'not found' });
+      const setup = clientRecord.numberSetup;
+      if (!setup || !setup.requirementGroupId) {
+        return sendJson(res, 400, { error: "This client hasn't been through number verification, so there are no approved details to order with." });
+      }
+      const { areaCode } = await readBody(req);
+      const code = String(areaCode || '').replace(/\D/g, '');
+      if (code && !/^0?[12]\d{1,4}$/.test(code)) {
+        return sendJson(res, 400, { error: 'Enter a UK landline area code, like 01606 or 0161.' });
+      }
+      const oldNumber = clientRecord.retellPhoneNumber || setup.phoneNumber;
+      const notes = [];
+      if (oldNumber) {
+        try {
+          await deletePhoneNumber(oldNumber);
+          notes.push('disconnected from the AI');
+        } catch (err) {
+          notes.push(`couldn't disconnect from Retell (${err.message || err}) -- remove it under Phone Numbers in Retell`);
+        }
+        try {
+          const released = await numberVerification.releaseNumber(oldNumber);
+          notes.push(released.released ? 'released in Telnyx' : `not released (${released.note})`);
+        } catch (err) {
+          notes.push(`couldn't release in Telnyx (${err.message || err}) -- delete it under My Numbers in Telnyx`);
+        }
+      }
+      const updated = db.updateClient(clientRecord.id, {
+        retellPhoneNumber: null,
+        numberSetup: {
+          ...setup,
+          status: 'verified',
+          orderId: null,
+          phoneNumber: null,
+          failReason: null,
+          orderRetries: 0,
+          preferredAreaCode: code || null,
+          replacedNumber: oldNumber || null,
+        },
+      });
+      advanceNumberSetup(updated);
+      return sendJson(res, 200, {
+        message: `${oldNumber ? `Old number ${oldNumber}: ${notes.join(', ')}. ` : ''}Ordering a new ${code ? (code.startsWith('0') ? code : '0' + code) : 'local'} number now -- check Telnyx Orders in a minute, and you'll get an email when it's connected. Remember to update any call forwarding to the new number.`,
+      });
     }
 
     // Founder-only (behind the dashboard password, like every /api/clients
