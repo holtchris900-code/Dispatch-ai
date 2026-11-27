@@ -462,3 +462,7 @@ header.scrolled { padding: 11px 0; }
 @keyframes typing-bounce { 0%, 60%, 100% { opacity: 0.4; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
 @keyframes chat-bubble-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 .bubble-enter { animation: chat-bubble-in 0.3s ease; }
+
+/* Keep the demo chat inside narrow phone screens */
+.hero > * { min-width: 0; }
+.chat-input-row input { min-width: 0; flex: 1 1 auto; }
