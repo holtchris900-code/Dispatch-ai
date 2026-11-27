@@ -434,7 +434,9 @@ async function advanceNumberSetup(clientRecord) {
 setInterval(() => {
   for (const client of db.listClients()) {
     const setup = client.numberSetup;
-    if (client.status === 'paid' && setup && (setup.status === 'submitted' || setup.status === 'ordered')) {
+    // 'verified' = details approved, fresh order due; 'failed' without a
+    // reason = an old failure that gets one recheck (see advanceNumberSetup).
+    if (client.status === 'paid' && setup && (['submitted', 'ordered', 'verified'].includes(setup.status) || (setup.status === 'failed' && !setup.failReason))) {
       advanceNumberSetup(client);
     }
   }
