@@ -325,20 +325,39 @@ async function emailFounder(subject, text) {
 async function advanceNumberSetup(clientRecord) {
   if (!clientRecord || clientRecord.retellPhoneNumber || !clientRecord.retellAgentId) return;
   const setup = clientRecord.numberSetup;
-  if (!setup || !setup.requirementGroupId || setup.status === 'failed' || setup.status === 'live') return;
+  if (!setup || !setup.requirementGroupId || setup.status === 'live') return;
+  // A failure from before we checked the approval first gets one recheck:
+  // if Telnyx has since approved the details, the number can still be ordered.
+  if (setup.status === 'failed' && setup.failReason) return;
   if (!numberVerification.isConfigured()) return;
   if (numberSetupInProgress.has(clientRecord.id)) return;
   numberSetupInProgress.add(clientRecord.id);
   const companyName = clientRecord.intake?.companyName || 'A client';
   try {
-    if (!setup.orderId) {
+    // Only order once Telnyx has approved the business details -- an order
+    // placed while they're still being reviewed just times out and gets
+    // cancelled ("inactivity").
+    if (!setup.orderId || setup.status === 'failed') {
+      const groupStatus = await numberVerification.checkGroupStatus(setup.requirementGroupId);
+      if (groupStatus === 'pending') {
+        db.updateClient(clientRecord.id, { numberSetup: { ...setup, status: setup.status === 'failed' ? 'submitted' : setup.status, orderId: null, lastCheckedAt: new Date().toISOString() } });
+        return;
+      }
+      if (groupStatus === 'rejected') {
+        db.updateClient(clientRecord.id, { numberSetup: { ...setup, status: 'failed', failReason: 'details-rejected', failedAt: new Date().toISOString() } });
+        await emailFounder(
+          `Dispatch AI -- business details not approved for "${companyName}"`,
+          `Telnyx didn't approve ${companyName}'s business details (requirement group ${setup.requirementGroupId}). Check it in the Telnyx portal (Compliance > Requirement groups) to see which document was refused. The client sees a note on their account page asking them to send their details again.`
+        );
+        return;
+      }
       const order = await numberVerification.orderNumberForClient({
         clientId: clientRecord.id,
         requirementGroupId: setup.requirementGroupId,
         town: setup.town,
       });
       db.updateClient(clientRecord.id, {
-        numberSetup: { ...setup, status: 'ordered', orderId: order.orderId, phoneNumber: order.phoneNumber, orderedAt: new Date().toISOString() },
+        numberSetup: { ...setup, status: 'ordered', failReason: null, orderId: order.orderId, phoneNumber: order.phoneNumber, orderedAt: new Date().toISOString() },
       });
       return;
     }
@@ -349,10 +368,25 @@ async function advanceNumberSetup(clientRecord) {
       return;
     }
     if (status === 'failed') {
-      db.updateClient(clientRecord.id, { numberSetup: { ...setup, status: 'failed', failedAt: new Date().toISOString() } });
+      // If the business details are approved, the order itself just didn't
+      // go through (e.g. cancelled for inactivity or the number was taken):
+      // order a fresh number automatically, up to 3 times.
+      const retries = setup.orderRetries || 0;
+      const groupStatus = await numberVerification.checkGroupStatus(setup.requirementGroupId).catch(() => 'pending');
+      if (groupStatus === 'approved' && retries < 3) {
+        db.updateClient(clientRecord.id, {
+          numberSetup: { ...setup, status: 'verified', orderId: null, phoneNumber: null, orderRetries: retries + 1, lastFailedOrderId: setup.orderId },
+        });
+        await emailFounder(
+          `Dispatch AI -- reordering a number for "${companyName}"`,
+          `Telnyx cancelled number order ${setup.orderId} for ${companyName}, but their business details are approved, so a new number is being ordered automatically (attempt ${retries + 2} of 4). Nothing for you or the client to do.`
+        );
+        return;
+      }
+      db.updateClient(clientRecord.id, { numberSetup: { ...setup, status: 'failed', failReason: groupStatus === 'approved' ? 'orders-keep-failing' : 'details-rejected', failedAt: new Date().toISOString() } });
       await emailFounder(
         `Dispatch AI -- phone number not approved for "${companyName}"`,
-        `Telnyx didn't approve the UK number order for ${companyName} (order ${setup.orderId}).\n\nCheck the order's messages in the Telnyx portal (Numbers > Orders) to see why -- usually a blurry or mismatched document. The client sees a note on their account page asking them to send their details again.`
+        `Telnyx didn't complete the UK number order for ${companyName} (order ${setup.orderId}).\n\nCheck the order's messages in the Telnyx portal (Numbers > Orders) to see why. ${groupStatus === 'approved' ? "Their business details are approved but several orders have failed, so this needs a look." : "Their business details aren't approved, so the client sees a note on their account page asking them to send their details again."}`
       );
       return;
     }
@@ -463,6 +497,7 @@ function clientPortalView(clientRecord) {
           status: clientRecord.numberSetup.status,
           submittedAt: clientRecord.numberSetup.submittedAt || null,
           failedAt: clientRecord.numberSetup.failedAt || null,
+          failReason: clientRecord.numberSetup.failReason || null,
         }
       : null,
     onCallNumber: clientRecord.intake?.onCallNumber || '',
