@@ -60,6 +60,12 @@
       if (new URLSearchParams(window.location.search).get('checkout') === 'cancelled') {
         document.getElementById('checkoutCancelledNote').style.display = 'block';
       }
+      // Keep the plan chosen on the pricing page (/onboard?plan=solo).
+      document.addEventListener('DOMContentLoaded', function () {
+        var chosen = new URLSearchParams(window.location.search).get('plan');
+        var select = document.querySelector('select[name="plan"]');
+        if (chosen && select && select.querySelector('option[value="' + chosen + '"]')) select.value = chosen;
+      });
     </script>
     <form class="intake" id="intakeForm">
       <fieldset>
@@ -74,7 +80,7 @@
             <option value="" disabled selected>Choose a plan</option>
             <option value="solo">Solo: £49/month, 150 minutes (phone answering only)</option>
             <option value="starter">Starter: £119/month, 400 minutes</option>
-            <option value="growth">Growth: £229/month, 1,000 minutes (most popular)</option>
+            <option value="growth">Growth: £229/month, 1,000 minutes (same features as Starter, more minutes)</option>
           </select>
         </div>
         <div class="field">
@@ -169,17 +175,9 @@
         </div>
       </fieldset>
 
-      <fieldset>
-        <legend>7. Compliance</legend>
-        <div class="field">
-          <label>Should the AI make outbound calls too (not just answer inbound)?</label>
-          <select name="outboundAllowed">
-            <option value="No, inbound only for now">No, inbound only for now</option>
-            <option value="Yes, for appointment reminders">Yes, for appointment reminders</option>
-            <option value="Yes, for quote follow-ups">Yes, for quote follow-ups</option>
-          </select>
-        </div>
-      </fieldset>
+      <div class="field" style="font-size:13px; color:var(--ink-soft); line-height:1.5;">
+        <strong style="color:var(--ink);">About your phone number:</strong> UK rules mean a new business number needs a photo ID and a proof of address (like a utility bill or bank statement) before it can go live. You'll upload these from your account after you start your trial, and the number is usually live within a few working days. Your script is ready straight away.
+      </div>
 
            <div class="field" style="display:flex; align-items:flex-start; gap:10px;">
         <input type="checkbox" id="agreeTerms" name="agreeTerms" required style="margin-top:4px; width:auto;" />

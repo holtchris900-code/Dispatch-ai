@@ -57,7 +57,7 @@
           <div id="phoneBox"></div>
           <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--line);">
             <label for="onCallInput" style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">Your mobile for urgent calls</label>
-            <p class="section-hint" style="margin:0 0 8px;">When a caller asks to speak to a person, your AI puts them through to this number, and urgent jobs are texted here. Leave it blank and your AI takes a message instead.</p>
+            <p class="section-hint" style="margin:0 0 8px;">When a caller asks to speak to a person, your AI puts them through to this number, and urgent jobs are texted here. Leave it blank and your AI takes a message instead. If this is the same phone you forward to your AI, forward it only when you don't answer (code **61*), or transfers will come straight back to the AI.</p>
             <input id="onCallInput" type="tel" placeholder="07..." style="width:100%; box-sizing:border-box; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:var(--paper); color:var(--ink); font-size:15px;" />
             <button class="btn btn-secondary" id="onCallSaveBtn" style="margin-top:8px;">Save number</button>
             <div id="onCallResult" style="margin-top:6px; font-size:13px; display:none;"></div>
@@ -430,9 +430,12 @@ function renderPhone(data) {
       '<div style="margin-top:10px; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:8px; font-size:13px; color:var(--ink-soft);">' +
       '<p style="margin:0 0 8px;">On the phone your customers currently call, open the dial pad like you\'re making a call, type this exactly, then press call:</p>' +
       '<div style="background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-family:ui-monospace, monospace; font-size:13px; color:var(--ink); margin-bottom:8px; -webkit-user-select:all; user-select:all;">**21*' + escapeAttr(data.retellPhoneNumber) + '#</div>' +
-      '<p style="margin:0 0 8px;">This is the standard UK call-forwarding code -- it works the same way on EE, O2, Vodafone, Three, most virtual networks that run on them (giffgaff, Tesco Mobile, VOXI, Sky Mobile, iD Mobile and similar), and most landlines including BT.</p>' +
+      '<p style="margin:0 0 8px;"><strong style="color:var(--ink);">Want the AI to put callers through to this same phone?</strong> Use this code instead, which only forwards when you don\'t answer (after about 15 seconds), so a transfer can still ring you:</p>' +
+      '<div style="background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-family:ui-monospace, monospace; font-size:13px; color:var(--ink); margin-bottom:8px; -webkit-user-select:all; user-select:all;">**61*' + escapeAttr(data.retellPhoneNumber) + '#</div>' +
+      '<p style="margin:0 0 8px;">The first code forwards every call, so if your mobile is also your number for urgent calls, a transfer would just come straight back to the AI.</p>' +
+      '<p style="margin:0 0 8px;">These are the standard UK call-forwarding codes -- they work the same way on EE, O2, Vodafone, Three, most virtual networks that run on them (giffgaff, Tesco Mobile, VOXI, Sky Mobile, iD Mobile and similar), and most landlines including BT.</p>' +
       '<p style="margin:0 0 8px;">You should see an on-screen confirmation once it\'s set. Call your business number from a different phone to double-check it now rings your AI agent.</p>' +
-      '<p style="margin:0;">Changed your mind, or it didn\'t work? Dial <strong style="color:var(--ink);">##21#</strong> and press call to turn forwarding off completely, then contact your phone provider if the code itself didn\'t go through -- a small number of plans handle this differently.</p>' +
+      '<p style="margin:0;">Changed your mind, or it didn\'t work? Dial <strong style="color:var(--ink);">##002#</strong> and press call to turn all forwarding off, then contact your phone provider if the code itself didn\'t go through -- a small number of plans handle this differently.</p>' +
       '</div></details>';
     box.innerHTML = '<div style="font-size:13.5px; font-weight:600; margin-bottom:8px;">📞 Live number: ' + escapeAttr(data.retellPhoneNumber) + '</div>' + forwardingHtml;
   }
